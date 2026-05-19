@@ -4,12 +4,10 @@
   "type": "module",
  "scripts": {
   "dev": "vite dev --port 3000",
-  "build": "vite build --preset node-server",
+  "build": "vite build",
   "start": "node .output/server/index.mjs",
   "db:generate": "drizzle-kit generate",
-  "db:migrate": "drizzle-kit migrate",
-  "db:push": "drizzle-kit push",
-  "db:upgrade": "drizzle-kit up"
+  "db:migrate": "drizzle-kit migrate"
 },
   "dependencies": {
     "@tailwindcss/vite": "4.2.2",
