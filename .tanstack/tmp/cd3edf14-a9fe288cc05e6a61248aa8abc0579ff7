@@ -1,0 +1,368 @@
+import { createFileRoute, Link, useNavigate } from '@tanstack/react-router'
+import { useState, useEffect } from 'react'
+import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts'
+
+export const Route = createFileRoute('/')({
+  component: AdminPage,
+})
+
+const SERVICES = [
+  { id: 'registrar', label: "Registrar's Office", icon: '🎓' },
+  { id: 'finance', label: 'Finance Office', icon: '💳' },
+  { id: 'ict_helpdesk', label: 'ICT Helpdesk', icon: '🖥️' },
+]
+
+type QueueEntry = {
+  id: number
+  name: string
+  studentId: string
+  serviceType: string
+  queueNumber: number
+  status: 'waiting' | 'serving' | 'served' | 'cancelled'
+  createdAt: string
+  servedAt?: string
+}
+
+function AdminPage() {
+  const navigate = useNavigate()
+  const [loggedIn, setLoggedIn] = useState(false)
+  const [auth, setAuth] = useState('')
+  const [activeTab, setActiveTab] = useState<'queue' | 'report'>('queue')
+  const [activeService, setActiveService] = useState('registrar')
+  const [queueData, setQueueData] = useState<{
+    serving: QueueEntry | null
+    waiting: QueueEntry[]
+    waitingCount: number
+  }>({ serving: null, waiting: [], waitingCount: 0 })
+  const [report, setReport] = useState<QueueEntry[]>([])
+  const [actionLoading, setActionLoading] = useState(false)
+
+  // Print receipt for currently serving student
+  const printReceipt = (entry: QueueEntry) => {
+    const receiptWindow = window.open('', '_blank', 'width=400,height=500')
+    if (receiptWindow) {
+      receiptWindow.document.write(`
+        <html>
+          <head><title>Queue Receipt</title></head>
+          <body style="font-family: Arial, sans-serif; text-align: center; padding: 20px;">
+            <img src="/queue-bg.jpeg" alt="JKUAT" style="width: 80px; border-radius: 50%;" />
+            <h2>JKUAT Queue Management</h2>
+            <hr />
+            <h3>Service Receipt</h3>
+            <p><strong>Reference:</strong> REF-${entry.id}</p>
+            <p><strong>Name:</strong> ${entry.name}</p>
+            <p><strong>Student ID:</strong> ${entry.studentId}</p>
+            <p><strong>Service:</strong> ${entry.serviceType}</p>
+            <p><strong>Queue Number:</strong> #${entry.queueNumber}</p>
+            <p><strong>Status:</strong> ${entry.status}</p>
+            <p><em>Please proceed to the counter when called.</em></p>
+            <hr />
+            <small>JKUAT - Digital Queue System</small>
+          </body>
+        </html>
+      `)
+      receiptWindow.document.close()
+      receiptWindow.print()
+    }
+  }
+
+  // Auth check on mount
+  useEffect(() => {
+    const storedAuth = sessionStorage.getItem('adminAuth')
+    if (!storedAuth) {
+      navigate({ to: '/login' })
+      return
+    }
+    fetch('/api/admin/report', { headers: { Authorization: `Basic ${storedAuth}` } })
+      .then(res => {
+        if (res.ok) {
+          setAuth(storedAuth)
+          setLoggedIn(true)
+        } else {
+          sessionStorage.removeItem('adminAuth')
+          navigate({ to: '/login' })
+        }
+      })
+      .catch(() => {
+        sessionStorage.removeItem('adminAuth')
+        navigate({ to: '/login' })
+      })
+  }, [navigate])
+
+  // Data fetching
+  async function fetchQueue() {
+    if (!loggedIn) return
+    try {
+      const res = await fetch(`/api/queue?service=${activeService}`)
+      const d = await res.json()
+      setQueueData(d)
+    } catch {}
+  }
+
+  async function fetchReport() {
+    if (!loggedIn) return
+    try {
+      const res = await fetch('/api/admin/report', { headers: { Authorization: `Basic ${auth}` } })
+      setReport(await res.json())
+    } catch {}
+  }
+
+  useEffect(() => {
+    if (!loggedIn) return
+    fetchQueue()
+    const t = setInterval(fetchQueue, 5000)
+    return () => clearInterval(t)
+  }, [loggedIn, activeService])
+
+  useEffect(() => {
+    if (loggedIn && activeTab === 'report') fetchReport()
+  }, [loggedIn, activeTab])
+
+  // Actions
+  async function serveNext() {
+    setActionLoading(true)
+    try {
+      await fetch('/api/admin/serve', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Basic ${auth}` },
+        body: JSON.stringify({ serviceType: activeService, action: 'serve_next' }),
+      })
+      await fetchQueue()
+    } finally {
+      setActionLoading(false)
+    }
+  }
+
+  async function cancelEntry(id: number) {
+    await fetch('/api/admin/serve', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Basic ${auth}` },
+      body: JSON.stringify({ serviceType: activeService, action: 'cancel', entryId: id }),
+    })
+    await fetchQueue()
+  }
+
+  // Prepare chart data from report (served per day)
+  const chartData = () => {
+    const servedByDate: Record<string, number> = {}
+    report.forEach(entry => {
+      if (entry.servedAt) {
+        const date = new Date(entry.servedAt).toLocaleDateString()
+        servedByDate[date] = (servedByDate[date] || 0) + 1
+      }
+    })
+    return Object.entries(servedByDate)
+      .map(([date, count]) => ({ date, count }))
+      .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime())
+  }
+
+  if (!loggedIn) return null
+
+  return (
+    <div className="min-h-screen bg-gray-50">
+      {/* Header */}
+      <header className="bg-white shadow-md sticky top-0 z-50">
+        <div className="max-w-6xl mx-auto px-4 py-3 flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <img src="/queue-bg.jpeg" alt="JKUAT" className="w-10 h-10 rounded-full border-2 border-green-600" />
+            <div>
+              <div className="font-bold text-green-800">Admin Control Panel</div>
+              <div className="text-xs text-gray-500">JKUAT Queue Management</div>
+            </div>
+          </div>
+          <div className="flex gap-2">
+            <Link to="/" className="text-sm text-gray-600 hover:text-green-700 px-3 py-1.5 rounded-lg hover:bg-gray-100">
+              ← Home
+            </Link>
+            <button
+              onClick={() => {
+                sessionStorage.removeItem('adminAuth')
+                navigate({ to: '/login' })
+              }}
+              className="text-sm text-red-600 hover:text-red-800 px-3 py-1.5 rounded-lg border border-red-300 hover:bg-red-50"
+            >
+              Logout
+            </button>
+          </div>
+        </div>
+      </header>
+
+      <main className="flex-1 max-w-6xl mx-auto w-full px-4 py-6">
+        {/* Tabs */}
+        <div className="flex gap-3 mb-6 border-b pb-2">
+          <button
+            onClick={() => setActiveTab('queue')}
+            className={`px-4 py-2 rounded-t-lg font-semibold transition ${
+              activeTab === 'queue'
+                ? 'text-green-700 border-b-2 border-green-700'
+                : 'text-gray-500 hover:text-green-600'
+            }`}
+          >
+            📋 Queue Management
+          </button>
+          <button
+            onClick={() => {
+              setActiveTab('report')
+              fetchReport()
+            }}
+            className={`px-4 py-2 rounded-t-lg font-semibold transition ${
+              activeTab === 'report'
+                ? 'text-green-700 border-b-2 border-green-700'
+                : 'text-gray-500 hover:text-green-600'
+            }`}
+          >
+            📊 Service Report
+          </button>
+        </div>
+
+        {activeTab === 'queue' && (
+          <div className="space-y-6">
+            {/* Service selector */}
+            <div className="flex flex-wrap gap-3">
+              {SERVICES.map(s => (
+                <button
+                  key={s.id}
+                  onClick={() => setActiveService(s.id)}
+                  className={`flex items-center gap-2 px-4 py-2 rounded-xl font-medium transition ${
+                    activeService === s.id
+                      ? 'bg-green-600 text-white shadow'
+                      : 'bg-white text-gray-700 border border-gray-300 hover:bg-gray-100'
+                  }`}
+                >
+                  {s.icon} {s.label}
+                </button>
+              ))}
+            </div>
+
+            {/* Currently serving */}
+            <div className="bg-white rounded-xl shadow p-5">
+              <div className="flex items-center justify-between mb-4">
+                <h2 className="text-lg font-bold text-gray-700">Currently Serving</h2>
+                <button
+                  onClick={serveNext}
+                  disabled={actionLoading}
+                  className="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 transition disabled:opacity-50"
+                >
+                  {actionLoading ? '...' : '▶ Serve Next'}
+                </button>
+              </div>
+              {queueData.serving ? (
+                <div className="flex items-center gap-4 p-4 bg-green-50 rounded-lg border border-green-200">
+                  <span className="text-4xl font-black text-green-700">#{queueData.serving.queueNumber}</span>
+                  <div>
+                    <div className="font-semibold">{queueData.serving.name}</div>
+                    <div className="text-sm text-gray-500">{queueData.serving.studentId}</div>
+                  </div>
+                  <span className="ml-auto text-sm font-medium px-3 py-1 rounded-full bg-green-100 text-green-800">
+                    SERVING
+                  </span>
+                  <button
+                    onClick={() => printReceipt(queueData.serving)}
+                    className="bg-blue-500 text-white px-3 py-1.5 rounded-lg text-sm hover:bg-blue-600 flex items-center gap-1"
+                  >
+                    🖨️ Print Receipt
+                  </button>
+                </div>
+              ) : (
+                <p className="text-gray-500 text-center py-4">No one is being served</p>
+              )}
+            </div>
+
+            {/* Waiting queue */}
+            <div className="bg-white rounded-xl shadow p-5">
+              <h2 className="text-lg font-bold text-gray-700 mb-3">
+                Waiting Queue{' '}
+                <span className="ml-2 bg-gray-200 text-gray-800 px-2 py-0.5 rounded-full text-sm">
+                  {queueData.waitingCount}
+                </span>
+              </h2>
+              {queueData.waiting.length === 0 ? (
+                <p className="text-gray-500 text-center py-4">No students waiting</p>
+              ) : (
+                <div className="space-y-2">
+                  {queueData.waiting.map((entry, idx) => (
+                    <div key={entry.id} className="flex items-center gap-3 p-3 border rounded-lg hover:bg-gray-50">
+                      <span className="text-gray-400 w-6">{idx + 1}.</span>
+                      <span className="font-mono font-bold text-lg w-16 text-green-700">#{entry.queueNumber}</span>
+                      <div className="flex-1">
+                        <div className="font-medium">{entry.name}</div>
+                        <div className="text-xs text-gray-500">{entry.studentId}</div>
+                      </div>
+                      <button
+                        onClick={() => cancelEntry(entry.id)}
+                        className="text-red-500 text-sm hover:text-red-700"
+                      >
+                        Cancel
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+
+        {activeTab === 'report' && (
+          <div className="bg-white rounded-xl shadow p-5">
+            <div className="flex items-center justify-between mb-4">
+              <h2 className="text-lg font-bold text-gray-700">Service Report</h2>
+              <span className="bg-green-100 text-green-800 px-3 py-1 rounded-full text-sm">
+                {report.length} Served
+              </span>
+            </div>
+
+            {/* Line Chart */}
+            {chartData().length > 0 && (
+              <div className="mb-8">
+                <h3 className="text-md font-semibold mb-2">📈 Daily Served Trend</h3>
+                <ResponsiveContainer width="100%" height={250}>
+                  <LineChart data={chartData()}>
+                    <CartesianGrid strokeDasharray="3 3" />
+                    <XAxis dataKey="date" />
+                    <YAxis />
+                    <Tooltip />
+                    <Line type="monotone" dataKey="count" stroke="#16a34a" strokeWidth={2} />
+                  </LineChart>
+                </ResponsiveContainer>
+              </div>
+            )}
+
+            {/* Report Table */}
+            {report.length === 0 ? (
+              <p className="text-gray-500 text-center py-6">No students served yet</p>
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm">
+                  <thead className="bg-gray-50">
+                    <tr>
+                      <th className="p-2 text-left">Ref No</th>
+                      <th className="p-2 text-left">Queue No</th>
+                      <th className="p-2 text-left">Name</th>
+                      <th className="p-2 text-left">Student ID</th>
+                      <th className="p-2 text-left">Service</th>
+                      <th className="p-2 text-left">Served At</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {report.map(entry => (
+                      <tr key={entry.id} className="border-t">
+                        <td className="p-2 font-mono text-green-700">REF-{entry.id}</td>
+                        <td className="p-2 font-bold">#{entry.queueNumber}</td>
+                        <td className="p-2">{entry.name}</td>
+                        <td className="p-2 text-gray-500">{entry.studentId}</td>
+                        <td className="p-2">{entry.serviceType}</td>
+                        <td className="p-2 text-gray-500">
+                          {entry.servedAt ? new Date(entry.servedAt).toLocaleString() : '—'}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+        )}
+      </main>
+    </div>
+  )
+}
