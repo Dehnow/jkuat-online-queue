@@ -4,12 +4,12 @@
   "type": "module",
  "scripts": {
   "dev": "vite dev --port 3000",
-  "build": "vite build",
-  "db:generate": "drizzle-kit generate:pg",
-  "db:migrate": "drizzle-kit migrate:pg",
-  "db:push": "drizzle-kit push:pg",
-  "db:upgrade": "drizzle-kit up",
-  "start": "node .output/server/index.mjs"
+  "build": "vite build --preset node-server",
+  "start": "node .output/server/index.mjs",
+  "db:generate": "drizzle-kit generate",
+  "db:migrate": "drizzle-kit migrate",
+  "db:push": "drizzle-kit push",
+  "db:upgrade": "drizzle-kit up"
 },
   "dependencies": {
     "@tailwindcss/vite": "4.2.2",
