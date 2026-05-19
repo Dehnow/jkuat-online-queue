@@ -2,14 +2,15 @@
   "name": "saas",
   "private": true,
   "type": "module",
-  "scripts": {
-    "dev": "vite dev --port 3000",
-    "build": "vite build",
-    "db:generate": "drizzle-kit generate",
-    "db:migrate": "drizzle-kit migrate",
-    "db:push": "drizzle-kit push",
-    "db:upgrade": "drizzle-kit up"
-  },
+ "scripts": {
+  "dev": "vite dev --port 3000",
+  "build": "vite build",
+  "db:generate": "drizzle-kit generate:pg",
+  "db:migrate": "drizzle-kit migrate:pg",
+  "db:push": "drizzle-kit push:pg",
+  "db:upgrade": "drizzle-kit up",
+  "start": "node .output/server/index.mjs"
+},
   "dependencies": {
     "@tailwindcss/vite": "4.2.2",
     "@tanstack/react-router": "1.168.22",
