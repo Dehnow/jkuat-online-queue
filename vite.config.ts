@@ -11,14 +11,4 @@ export default defineConfig({
     tanstackStart(),
     viteReact(),
   ],
-  build: {
-    outDir: 'dist',
-    rollupOptions: {
-      output: {
-        entryFileNames: 'server/index.mjs',
-        chunkFileNames: 'server/chunks/[name]-[hash].js',
-        assetFileNames: 'assets/[name]-[hash][extname]',
-      },
-    },
-  },
 })
