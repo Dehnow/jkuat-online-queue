@@ -1,21 +1,10 @@
-import { createFileRoute, useNavigate } from '@tanstack/react-router'
+import { useNavigate } from '@tanstack/react-router'
 import { useState, useEffect } from 'react'
+import { useQuery } from '@tanstack/react-query'
+import { Building2, Banknote, Headphones } from 'lucide-react'
 
-export const Route = createFileRoute('/login')({
-  component: LoginPage,
-})
 
-type QueueStats = {
-  serviceId: string
-  serviceName: string
-  waitingCount: number
-  servingNumber: number | null
-  icon: JSX.Element
-  color: string
-  bgColor: string
-}
-
-function LoginPage() {
+export default function LoginPage() {
   const navigate = useNavigate()
   const [role, setRole] = useState<'student' | 'staff'>('student')
   const [username, setUsername] = useState('')
@@ -23,8 +12,6 @@ function LoginPage() {
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
   const [showQueueModal, setShowQueueModal] = useState(false)
-  const [queueStats, setQueueStats] = useState<QueueStats[]>([])
-  const [isFetching, setIsFetching] = useState(false)
 
   // Clear fields when role changes (prevents browser autofill cross‑contamination)
   useEffect(() => {
@@ -73,48 +60,59 @@ function LoginPage() {
     }
   }
 
-  // Fetch queue stats for modal
-  const fetchAllQueueStats = async () => {
-    setIsFetching(true)
-    try {
+  // Fetch live queue status with TanStack Query
+  const { data: liveQueueData, isLoading: isFetching, error: queryError } = useQuery({
+    queryKey: ['live-queue-status'],
+    queryFn: async () => {
       const services = [
-        { id: 'registrar', name: 'Admissions Office', color: '#16a34a', bgColor: '#dcfce7', icon: <BuildingIcon className="w-6 h-6" /> },
-        { id: 'finance', name: 'Finance Office', color: '#f59e0b', bgColor: '#fef3c7', icon: <BankIcon className="w-6 h-6" /> },
-        { id: 'ict_helpdesk', name: 'ICT Help Desk', color: '#8b5cf6', bgColor: '#ede9fe', icon: <HeadsetIcon className="w-6 h-6" /> }
+        { id: 'registrar', name: "Registrar's Office", color: '#16a34a', bgColor: '#dcfce7' },
+        { id: 'finance', name: 'Finance Office', color: '#f59e0b', bgColor: '#fef3c7' },
+        { id: 'ict_helpdesk', name: 'ICT Help Desk', color: '#8b5cf6', bgColor: '#ede9fe' }
       ]
-      const results = await Promise.all(
-        services.map(async (service) => {
-          const res = await fetch(`/api/queue?service=${service.id}`)
-          const data = await res.json()
-          return {
-            serviceId: service.id,
-            serviceName: service.name,
-            waitingCount: data.waitingCount || 0,
-            servingNumber: data.serving?.queueNumber || null,
-            icon: service.icon,
-            color: service.color,
-            bgColor: service.bgColor,
-          }
-        })
-      )
-      setQueueStats(results)
-    } catch (err) {
-      console.error(err)
-    } finally {
-      setIsFetching(false)
-    }
-  }
-
-  useEffect(() => {
-    if (showQueueModal) {
-      fetchAllQueueStats()
-      const interval = setInterval(fetchAllQueueStats, 10000)
-      return () => clearInterval(interval)
-    }
-  }, [showQueueModal])
-
-  const getEstWaitTime = (waitingCount: number) => waitingCount * 5
-  const getProgressWidth = (waitingCount: number) => Math.min((waitingCount / 20) * 100, 100)
+      
+      const controller = new AbortController()
+      const timeout = setTimeout(() => controller.abort(), 8000)
+      
+      try {
+        const results = await Promise.all(
+          services.map(async (service) => {
+            try {
+              const res = await fetch(`/api/queue?service=${service.id}`, {
+                signal: controller.signal
+              })
+              if (!res.ok) throw new Error(`HTTP ${res.status}`)
+              const data = await res.json()
+              return {
+                serviceId: service.id,
+                serviceName: service.name,
+                waitingCount: data.waitingCount || 0,
+                servingNumber: data.serving?.queueNumber || null,
+                color: service.color,
+                bgColor: service.bgColor,
+              }
+            } catch (err) {
+              console.warn(`Queue fetch failed for ${service.id}:`, err)
+              return {
+                serviceId: service.id,
+                serviceName: service.name,
+                waitingCount: 0,
+                servingNumber: null,
+                color: service.color,
+                bgColor: service.bgColor,
+              }
+            }
+          })
+        )
+        return results
+      } finally {
+        clearTimeout(timeout)
+      }
+    },
+    refetchInterval: showQueueModal ? 15000 : false,
+    enabled: showQueueModal,
+    staleTime: 10000,
+    gcTime: 5 * 60 * 1000,
+  })
 
   return (
     <div className="min-h-screen w-full flex font-['Inter',system-ui] bg-gradient-to-br from-gray-50 to-gray-100 relative overflow-hidden">
@@ -281,31 +279,69 @@ function LoginPage() {
               <div className="flex items-center gap-2"><svg className="w-6 h-6 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M13 10V3L4 14h7v7l9-11h-7z" /></svg><h2 className="text-3xl font-bold text-gray-800">Live Queue Status</h2></div>
               <div className="flex items-center gap-2 bg-gradient-to-r from-green-600 to-green-500 py-2 px-4 rounded-full shadow-md"><span className="relative flex h-3 w-3"><span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-white opacity-75"></span><span className="relative inline-flex rounded-full h-3 w-3 bg-white"></span></span><span className="text-white font-semibold text-sm">Live</span></div>
             </div>
-            <p className="text-gray-500 text-lg mb-6">Real-time updates from campus services</p>
-            {isFetching && queueStats.length === 0 ? (
+            <p className="text-gray-500 text-lg mb-6">Real-time updates from campus services • Polling every 10 seconds</p>
+            {isFetching && !liveQueueData ? (
               <div className="flex justify-center py-12"><div className="animate-spin rounded-full h-12 w-12 border-b-2 border-green-600"></div></div>
+            ) : queryError ? (
+              <div className="bg-red-100 border border-red-300 text-red-700 p-4 rounded-lg">
+                <p>Failed to load queue status. Please try again.</p>
+              </div>
+            ) : !liveQueueData || liveQueueData.length === 0 ? (
+              <div className="text-center py-12">
+                <p className="text-gray-500 text-lg">No active queues at the moment.</p>
+              </div>
             ) : (
               <div className="space-y-5 max-h-[70vh] overflow-y-auto pr-2">
-                {queueStats.map((service) => {
-                  const waitTime = getEstWaitTime(service.waitingCount)
-                  const progress = getProgressWidth(service.waitingCount)
+                {liveQueueData.map((service) => {
+                  const getServiceIcon = (serviceId: string) => {
+                    switch (serviceId) {
+                      case 'registrar':
+                        return <Building2 className="w-6 h-6" />
+                      case 'finance':
+                        return <Banknote className="w-6 h-6" />
+                      case 'ict_helpdesk':
+                        return <Headphones className="w-6 h-6" />
+                      default:
+                        return null
+                    }
+                  }
+                  const waitTime = service.waitingCount * 5
+                  const progress = Math.min((service.waitingCount / 20) * 100, 100)
+                  
                   return (
                     <div key={service.serviceId} className="bg-white rounded-2xl shadow-md border border-gray-100 p-5 hover:shadow-lg transition-shadow">
                       <div className="flex items-center justify-between">
                         <div className="flex items-center gap-4">
-                          <div className={`w-14 h-14 rounded-2xl flex items-center justify-center`} style={{ backgroundColor: service.bgColor, color: service.color }}>{service.icon}</div>
-                          <div><h3 className="text-2xl font-bold text-gray-800">{service.serviceName}</h3><p className="text-gray-500 text-sm">Open • Closes 4:30 PM</p></div>
+                          <div className={`w-14 h-14 rounded-2xl flex items-center justify-center`} style={{ backgroundColor: service.bgColor, color: service.color }}>
+                            {getServiceIcon(service.serviceId)}
+                          </div>
+                          <div>
+                            <h3 className="text-2xl font-bold text-gray-800">{service.serviceName}</h3>
+                            <p className="text-gray-500 text-sm">Open • Closes 4:30 PM</p>
+                          </div>
                         </div>
-                        <div className="text-right"><div className="text-5xl font-bold" style={{ color: service.color }}>{service.waitingCount}</div><div className="text-gray-400 text-sm">waiting</div></div>
+                        <div className="text-right">
+                          <div className="text-5xl font-bold" style={{ color: service.color }}>{service.waitingCount}</div>
+                          <div className="text-gray-400 text-sm">waiting</div>
+                        </div>
                       </div>
                       <div className="mt-4">
-                        <div className="flex items-center gap-2 text-gray-600 mb-2"><svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" /></svg><span className="text-sm">Est. wait time: {waitTime} min</span></div>
-                        <div className="w-full bg-gray-200 rounded-full h-2"><div className="h-2 rounded-full" style={{ width: `${progress}%`, backgroundColor: service.color }}></div></div>
+                        <div className="flex items-center gap-2 text-gray-600 mb-2">
+                          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
+                          <span className="text-sm">Est. wait time: {waitTime} min</span>
+                        </div>
+                        <div className="w-full bg-gray-200 rounded-full h-2">
+                          <div className="h-2 rounded-full" style={{ width: `${progress}%`, backgroundColor: service.color }}></div>
+                        </div>
+                        {service.servingNumber && (
+                          <div className="mt-3 text-sm text-gray-600">
+                            <span>Currently serving: <strong className="font-bold" style={{ color: service.color }}>#{service.servingNumber}</strong></span>
+                          </div>
+                        )}
                       </div>
                     </div>
                   )
                 })}
-                <button className="w-full mt-4 py-3 rounded-xl border border-green-500 text-green-600 font-semibold hover:bg-green-50 transition-colors">View all services →</button>
               </div>
             )}
           </div>
@@ -316,6 +352,5 @@ function LoginPage() {
 }
 
 // Icon components
-function BuildingIcon(props: any) { return <svg {...props} fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" /></svg> }
-function BankIcon(props: any) { return <svg {...props} fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M3 10h18M6 10v10h12V10M4 4h16v4H4V4z" /></svg> }
-function HeadsetIcon(props: any) { return <svg {...props} fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 18h.01M8 21h8a2 2 0 002-2V5a2 2 0 00-2-2H8a2 2 0 00-2 2v14a2 2 0 002 2z" /></svg> }
+
+

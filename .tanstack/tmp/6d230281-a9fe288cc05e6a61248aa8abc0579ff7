@@ -73,7 +73,8 @@ function AdminPage() {
       navigate({ to: '/login' })
       return
     }
-    fetch('/api/admin/report', { headers: { Authorization: `Basic ${storedAuth}` } })
+    if (typeof window !== 'undefined') {
+    fetch('/api/admin/report', { headers: { Authorization: `Basic ${storedAuth}` } })}
       .then(res => {
         if (res.ok) {
           setAuth(storedAuth)

@@ -1,0 +1,15 @@
+services:
+  - type: web
+    name: jkuat-queue
+    runtime: node
+    buildCommand: npm install && npm run build
+    startCommand: npm run production
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: DATABASE_URL
+        fromDatabase:
+          name: jkuat-queue-db
+          property: connectionString
+      - key: PORT
+        value: "3000"

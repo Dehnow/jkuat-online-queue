@@ -1,15 +1,43 @@
-import { createRouter } from '@tanstack/react-router'
+import { createRouter, RootRoute, Route } from '@tanstack/react-router'
+import RootLayout from './routes/__root'
+import StudentDashboard from './routes/index'
+import AdminPage from './routes/admin'
+import LoginPage from './routes/login'
+import TrackPage from './routes/track.$id'
 
-// Import the generated route tree
-import { routeTree } from './routeTree.gen'
+const rootRoute = new RootRoute({
+  component: RootLayout,
+})
 
-// Create a new router instance
-export const getRouter = () => {
-  const router = createRouter({
-    routeTree,
-    scrollRestoration: true,
-    defaultPreloadStaleTime: 0,
-  })
+const indexRoute = new Route({
+  getParentRoute: () => rootRoute,
+  path: '/',
+  component: StudentDashboard,
+})
 
-  return router
-}
+const adminRoute = new Route({
+  getParentRoute: () => rootRoute,
+  path: '/admin',
+  component: AdminPage,
+})
+
+const loginRoute = new Route({
+  getParentRoute: () => rootRoute,
+  path: '/login',
+  component: LoginPage,
+})
+
+const trackRoute = new Route({
+  getParentRoute: () => rootRoute,
+  path: '/track/$id',
+  component: TrackPage,
+})
+
+const routeTree = rootRoute.addChildren([
+  indexRoute,
+  adminRoute,
+  loginRoute,
+  trackRoute,
+])
+
+export const router = createRouter({ routeTree })

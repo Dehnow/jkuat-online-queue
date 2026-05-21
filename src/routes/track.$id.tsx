@@ -1,10 +1,5 @@
-'use client'
-import { createFileRoute, Link } from '@tanstack/react-router'
+import { Link, useParams } from '@tanstack/react-router'
 import { useState, useEffect, useRef } from 'react'
-
-export const Route = createFileRoute('/track/$id')({
-  component: TrackPage,
-})
 
 const SERVICE_LABELS: Record<string, string> = {
   registrar: "Registrar's Office",
@@ -30,13 +25,12 @@ type QueueEntry = {
   currentlyServing: number | null
 }
 
-function TrackPage() {
-  const { id } = Route.useParams()
+export default function TrackPage() {
+  const { id } = useParams({ from: '/track/$id' })
   const [entry, setEntry] = useState<QueueEntry | null>(null)
   const [error, setError] = useState('')
   const [notified, setNotified] = useState(false)
   const prevStatus = useRef<string | null>(null)
-  const audioRef = useRef<HTMLAudioElement | null>(null)
 
   useEffect(() => {
     async function fetch_status() {

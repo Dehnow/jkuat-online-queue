@@ -1,11 +1,7 @@
-import { createFileRoute, Link, useNavigate } from '@tanstack/react-router'
+import { useNavigate } from '@tanstack/react-router'
 import { useState, useEffect } from 'react'
+import { Building2, Banknote, Headphones } from 'lucide-react'
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts'
-
-export const Route = createFileRoute('/admin')({
-  component: AdminPage,
-})
-
 type QueueEntry = {
   id: number
   name: string
@@ -65,7 +61,7 @@ const getHourlyServed = (entries: QueueEntry[]) => {
   return Object.entries(hourly).map(([hour, count]) => ({ hour: parseInt(hour), count })).sort((a, b) => a.hour - b.hour)
 }
 
-function AdminPage() {
+export default function AdminPage() {
   const navigate = useNavigate()
   const [loggedIn, setLoggedIn] = useState(false)
   const [auth, setAuth] = useState('')
@@ -107,9 +103,9 @@ function AdminPage() {
     if (!auth) return
     try {
       const services = [
-        { id: 'registrar', name: "Registrar's Office", color: '#16a34a', bgColor: '#dcfce7', icon: <BuildingIcon className="w-5 h-5" /> },
-        { id: 'finance', name: 'Finance Office', color: '#f59e0b', bgColor: '#fef3c7', icon: <BankIcon className="w-5 h-5" /> },
-        { id: 'ict_helpdesk', name: 'ICT Helpdesk', color: '#3b82f6', bgColor: '#dbeafe', icon: <HeadsetIcon className="w-5 h-5" /> }
+        { id: 'registrar', name: "Registrar's Office", color: '#16a34a', bgColor: '#dcfce7', icon: <Building2 className="w-5 h-5" /> },
+        { id: 'finance', name: 'Finance Office', color: '#f59e0b', bgColor: '#fef3c7', icon: <Banknote className="w-5 h-5" /> },
+        { id: 'ict_helpdesk', name: 'ICT Helpdesk', color: '#3b82f6', bgColor: '#dbeafe', icon: <Headphones className="w-5 h-5" /> }
       ]
       const queues = await Promise.all(
         services.map(async (svc) => {
@@ -258,7 +254,7 @@ function AdminPage() {
               >
                 <div className="flex items-start justify-between">
                   <div className="flex items-center gap-3">
-                    <div className="w-12 h-12 bg-green-100 rounded-full flex items-center justify-center"><BuildingIcon className="w-6 h-6 text-green-600" /></div>
+                    <div className="w-12 h-12 bg-green-100 rounded-full flex items-center justify-center"><Building2 className="w-6 h-6 text-green-600" /></div>
                     <div><p className="text-gray-600 text-sm">Registrar's Office</p><p className="text-4xl font-extrabold text-green-600">{serviceQueues.find(q => q.serviceId === 'registrar')?.waitingCount || 0}</p><p className="text-xs text-gray-400">people</p></div>
                   </div>
                   <svg className="w-8 h-8 text-green-200" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z" /></svg>
@@ -270,7 +266,7 @@ function AdminPage() {
               >
                 <div className="flex items-start justify-between">
                   <div className="flex items-center gap-3">
-                    <div className="w-12 h-12 bg-amber-100 rounded-full flex items-center justify-center"><BankIcon className="w-6 h-6 text-amber-500" /></div>
+                    <div className="w-12 h-12 bg-amber-100 rounded-full flex items-center justify-center"><Banknote className="w-6 h-6 text-amber-500" /></div>
                     <div><p className="text-gray-600 text-sm">Finance Office</p><p className="text-4xl font-extrabold text-amber-500">{serviceQueues.find(q => q.serviceId === 'finance')?.waitingCount || 0}</p><p className="text-xs text-gray-400">people</p></div>
                   </div>
                   <svg className="w-8 h-8 text-amber-200" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M17 9V7a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2m2 4h10a2 2 0 002-2v-6a2 2 0 00-2-2H9a2 2 0 00-2 2v6a2 2 0 002 2zm7-5a2 2 0 11-4 0 2 2 0 014 0z" /></svg>
@@ -282,7 +278,7 @@ function AdminPage() {
               >
                 <div className="flex items-start justify-between">
                   <div className="flex items-center gap-3">
-                    <div className="w-12 h-12 bg-blue-100 rounded-full flex items-center justify-center"><HeadsetIcon className="w-6 h-6 text-blue-500" /></div>
+                    <div className="w-12 h-12 bg-blue-100 rounded-full flex items-center justify-center"><Headphones className="w-6 h-6 text-blue-500" /></div>
                     <div><p className="text-gray-600 text-sm">ICT Helpdesk</p><p className="text-4xl font-extrabold text-blue-500">{serviceQueues.find(q => q.serviceId === 'ict_helpdesk')?.waitingCount || 0}</p><p className="text-xs text-gray-400">people</p></div>
                   </div>
                   <svg className="w-8 h-8 text-blue-200" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 3v2m6-2v2M9 19v2m6-2v2M5 3h14a2 2 0 012 2v14a2 2 0 01-2 2H5a2 2 0 01-2-2V5a2 2 0 012-2z" /></svg>
@@ -320,7 +316,7 @@ function AdminPage() {
                     <div className="bg-green-50 rounded-2xl p-6 flex items-center justify-between">
                       <div className="flex items-center gap-6">
                         <div className="w-20 h-20 bg-green-100 rounded-full flex items-center justify-center">
-                          {selectedOffice === 'registrar' ? <BuildingIcon className="w-10 h-10 text-green-600" /> : selectedOffice === 'finance' ? <BankIcon className="w-10 h-10 text-amber-500" /> : <HeadsetIcon className="w-10 h-10 text-blue-600" />}
+                          {selectedOffice === 'registrar' ? <Building2 className="w-10 h-10 text-green-600" /> : selectedOffice === 'finance' ? <Banknote className="w-10 h-10 text-amber-500" /> : <Headphones className="w-10 h-10 text-blue-600" />}
                         </div>
                         <div>
                           <h3 className="text-2xl font-bold text-green-700">{selectedQueueObj?.serviceName}</h3>
@@ -472,6 +468,5 @@ function AdminPage() {
 }
 
 // Icon components
-function BuildingIcon(props: any) { return <svg {...props} fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" /></svg> }
-function BankIcon(props: any) { return <svg {...props} fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M3 10h18M6 10v10h12V10M4 4h16v4H4V4z" /></svg> }
-function HeadsetIcon(props: any) { return <svg {...props} fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 18h.01M8 21h8a2 2 0 002-2V5a2 2 0 00-2-2H8a2 2 0 00-2 2v14a2 2 0 002 2z" /></svg> }
+
+
