@@ -1,42 +1,16 @@
-import { json } from '@tanstack/start'
-import { db } from '../../../db/index'
-import { queueEntries } from '../../../db/schema'
-import { eq, and } from 'drizzle-orm'
+/**
+ * DEPRECATED: This file is NOT used in production
+ * 
+ * ACTUAL ROUTE: See api-server.js (lines 357-405)
+ * 
+ * The api-server.js file handles admin serve API operations:
+ * - POST /api/admin/serve → Serve next, complete, or cancel queue entry
+ * 
+ * If you need to modify the /api/admin/serve route, edit api-server.js instead.
+ */
 
-// Basic Auth helper
-function getBasicAuth(request: Request) {
-  const authHeader = request.headers.get('Authorization')
-  if (!authHeader?.startsWith('Basic ')) {
-    return null
-  }
-
-  const credentials = Buffer.from(authHeader.slice(6), 'base64').toString()
-  const [username, password] = credentials.split(':')
-  return { username, password }
-}
-
-function verifyAuth(request: Request): boolean {
-  const auth = getBasicAuth(request)
-  if (!auth) return false
-
-  const validUsername = 'Admin0375'
-  const validPassword = 'group2sysdev'
-
-  return auth.username === validUsername && auth.password === validPassword
-}
-
-export async function POST(request: Request) {
-  try {
-    if (!verifyAuth(request)) {
-      return json({ error: 'Unauthorized' }, { status: 401 })
-    }
-
-    const body = await request.json()
-    const { action, serviceType, entryId } = body
-
-    if (!action || !serviceType) {
-      return json({ error: 'Missing required fields' }, { status: 400 })
-    }
+// ORIGINAL CODE - NOT USED IN PRODUCTION
+// See api-server.js for the actual implementation
 
     // Stop serving current entry for this service
     if (action === 'serve_next') {

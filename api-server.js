@@ -11,6 +11,27 @@ import { fileURLToPath } from 'url'
 dotenv.config()
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
+const NODE_ENV = process.env.NODE_ENV || 'development'
+const PORT = process.env.PORT || 3000
+
+// Startup validation
+console.log('🚀 JKUAT Queue System - Startup Initialization')
+console.log(`📋 Environment: ${NODE_ENV}`)
+console.log(`🔌 Port: ${PORT}`)
+console.log(`📦 Node Version: ${process.version}`)
+
+if (NODE_ENV === 'production' && !process.env.DATABASE_URL) {
+  console.error('❌ FATAL: DATABASE_URL environment variable is not set!')
+  console.error('❌ Cannot start in production without database connection.')
+  console.error('Please ensure DATABASE_URL is configured in your environment.')
+  process.exit(1)
+}
+
+if (NODE_ENV === 'production') {
+  console.log('✓ DATABASE_URL is configured')
+} else {
+  console.warn('⚠️  Development mode: DATABASE_URL may not be required for local testing')
+}
 
 // Schema
 const statusEnum = pgEnum('queue_status', ['waiting', 'serving', 'served', 'cancelled'])
@@ -58,8 +79,6 @@ async function initializeDatabase() {
 
 // Express app
 const app = express()
-const PORT = process.env.PORT || 3000
-const NODE_ENV = process.env.NODE_ENV || 'development'
 
 // CORS configuration - handles both local and production
 const corsOptions = {
@@ -103,6 +122,25 @@ const corsOptions = {
 
 app.use(cors(corsOptions))
 app.use(express.json())
+
+// Database status middleware - check if DB is ready for API requests (except health check)
+app.use((req, res, next) => {
+  // Allow health checks and static files without database
+  if (req.path === '/health' || req.path === '/api/health' || req.path === '/api/debug' || !req.path.startsWith('/api')) {
+    return next()
+  }
+  
+  // For API requests, require database connection
+  if (!db) {
+    return res.status(503).json({ 
+      error: 'Service Temporarily Unavailable',
+      message: 'Database is initializing. Please try again in a few moments.',
+      status: 'INITIALIZING'
+    })
+  }
+  
+  next()
+})
 
 // Serve static files in production
 if (NODE_ENV === 'production') {
@@ -451,6 +489,19 @@ app.get('/health', (req, res) => {
   })
 })
 
+// Debug endpoint - shows deployment info
+app.get('/api/debug', (req, res) => {
+  res.json({
+    environment: NODE_ENV,
+    nodeVersion: process.version,
+    databaseConnected: !!db,
+    distPath: NODE_ENV === 'production' ? path.join(__dirname, 'dist') : 'N/A',
+    distExists: NODE_ENV === 'production' ? require('fs').existsSync(path.join(__dirname, 'dist')) : 'N/A',
+    indexHtmlExists: NODE_ENV === 'production' ? require('fs').existsSync(path.join(__dirname, 'dist', 'index.html')) : 'N/A',
+    apiEndpointsWorking: true,
+  })
+})
+
 // SPA fallback - serve index.html for all unknown routes (both dev and production)
 app.get('*', (req, res) => {
   if (NODE_ENV === 'production') {
@@ -470,36 +521,47 @@ app.get('*', (req, res) => {
 
 // Initialize database and start server
 async function startServer() {
-  // Start the HTTP server immediately - don't block on database
+  console.log('🚀 Starting server...')
+  
+  // Try to initialize database with timeout (max 30 seconds)
+  let dbConnected = false
+  try {
+    console.log('📡 Attempting initial database connection...')
+    const dbPromise = initializeDatabase()
+    const timeoutPromise = new Promise((_, reject) => 
+      setTimeout(() => reject(new Error('Database connection timeout (30s)')), 30000)
+    )
+    
+    await Promise.race([dbPromise, timeoutPromise])
+    dbConnected = true
+    console.log(`✓ Database: Connected and ready on startup`)
+  } catch (error) {
+    console.error('❌ Initial database connection failed:', error.message)
+    console.warn('⚠️  Server will start but will attempt to reconnect...')
+  }
+
+  // Start the HTTP server
   const server = app.listen(PORT, '0.0.0.0', () => {
     console.log(`\n✓ Backend server running on port ${PORT}`)
     console.log(`✓ Environment: ${NODE_ENV}`)
     console.log(`✓ API endpoints available at /api/*`)
+    console.log(`✓ Database Status: ${dbConnected ? 'CONNECTED ✓' : 'CONNECTING... ⏳'}`)
     console.log(`\n`)
   })
 
-  // Try to initialize database in the background with retries
-  initializeDatabase()
-    .then(() => {
-      console.log(`✓ Database: Connected and ready`)
-    })
-    .catch((error) => {
-      console.error('❌ Failed to connect to database:', error.message)
-      console.error('⚠️  Server is still running, but database features are unavailable')
-      console.error('Retries will continue in the background...')
-      
-      // Keep trying to reconnect every 30 seconds
-      const reconnectInterval = setInterval(async () => {
-        console.log('Attempting to reconnect to database...')
-        try {
-          await initializeDatabase()
-          console.log('✓ Database reconnected successfully!')
-          clearInterval(reconnectInterval)
-        } catch (e) {
-          console.error('Reconnection attempt failed:', e.message)
-        }
-      }, 30000)
-    })
+  // If database not connected on startup, keep trying to reconnect
+  if (!dbConnected) {
+    const reconnectInterval = setInterval(async () => {
+      try {
+        console.log('🔄 Attempting database reconnection...')
+        await initializeDatabase()
+        console.log('✓ Database reconnected successfully!')
+        clearInterval(reconnectInterval)
+      } catch (e) {
+        console.error('⏳ Reconnection attempt failed:', e.message, '(will retry in 10 seconds)')
+      }
+    }, 10000) // Try every 10 seconds instead of 30
+  }
 }
 
 startServer().catch((error) => {

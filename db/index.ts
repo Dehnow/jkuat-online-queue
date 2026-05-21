@@ -1,3 +1,16 @@
+/**
+ * DEPRECATED: This TypeScript database client is NOT used in production
+ * 
+ * This file was intended for TanStack Start integration but the project
+ * uses a standard Vite + Express architecture instead.
+ * 
+ * ACTUAL DATABASE SETUP: See api-server.js
+ * 
+ * The api-server.js file contains the actual database initialization
+ * and schema that's used in production. This file can be removed if not
+ * needed for development reference.
+ */
+
 import dotenv from "dotenv";
 import { drizzle } from "drizzle-orm/postgres-js";
 import postgres from "postgres";
