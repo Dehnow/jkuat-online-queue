@@ -197,7 +197,8 @@ function StudentDashboard() {
             return {
               serviceName: s === 'registrar' ? "Registrar's Office" : s === 'finance' ? 'Finance Office' : 'ICT Helpdesk',
               waitingCount: data.waitingCount || 0,
-              servingNumber: data.serving?.queueNumber || null
+              servingNumber: data.serving?.queueNumber || null,
+              activeCount: (data.waitingCount || 0) + (data.serving ? 1 : 0)
             }
           } catch (err) {
             console.warn(`Failed to fetch ${s} queue:`, err)
@@ -496,6 +497,12 @@ function StudentDashboard() {
                           <span className="text-2xl font-bold text-green-600">#{s.servingNumber || '—'}</span>
                         </div>
                         <div>
+                          <div className="flex justify-between items-center mb-1">
+                            <span className="text-xs text-gray-600">Active (Serving + Waiting)</span>
+                            <span className="text-lg font-bold text-gray-800">{s.activeCount}</span>
+                          </div>
+                          <div className="h-1" />
+                        
                           <div className="flex justify-between items-center mb-1">
                             <span className="text-xs text-gray-600">Waiting</span>
                             <span className="text-lg font-bold text-orange-500">{s.waitingCount}</span>
