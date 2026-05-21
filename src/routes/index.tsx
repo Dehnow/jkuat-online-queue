@@ -67,12 +67,36 @@ const refreshActiveTickets = async (): Promise<number> => {
   }
 }
 
-const getReferenceNumber = (id: number) => {
-  const now = new Date()
+const getServiceCode = (service: string) => {
+  switch (service) {
+    case 'registrar': return 'REG'
+    case 'finance': return 'FIN'
+    case 'ict_helpdesk': return 'ICT'
+    default: return 'JKU'
+  }
+}
+
+const normalizeTicketEntry = (raw: any): QueueEntry => {
+  const createdAt = raw.createdAt || raw.created_at || new Date().toISOString()
+  return {
+    id: Number(raw.id || raw.id === 0 ? raw.id : raw.id ?? 0),
+    name: raw.name || raw.studentId || raw.student_id || 'Student',
+    studentId: raw.studentId || raw.student_id || '',
+    serviceType: raw.serviceType || raw.service_type || 'registrar',
+    queueNumber: Number(raw.queueNumber || raw.queue_number || 0),
+    status: raw.status || 'waiting',
+    createdAt,
+  }
+}
+
+const getReferenceNumber = (ticket: number | { id: number; serviceType?: string; createdAt?: string }) => {
+  const ticketObj = typeof ticket === 'number' ? { id: ticket, serviceType: 'registrar' } : ticket
+  const now = ticketObj.createdAt ? new Date(ticketObj.createdAt) : new Date()
   const day = String(now.getDate()).padStart(2,'0')
   const month = String(now.getMonth()+1).padStart(2,'0')
   const year = String(now.getFullYear()).slice(-2)
-  return `JK${day}${month}${year}-${id}`
+  const serviceCode = getServiceCode(ticketObj.serviceType || 'registrar')
+  return `${serviceCode}${day}${month}${year}-${ticketObj.id}`
 }
 
 const getStatusBadge = (status: string) => {
@@ -195,6 +219,7 @@ function StudentDashboard() {
             if (!res.ok) throw new Error(`HTTP ${res.status}`)
             const data = await res.json()
             return {
+              serviceType: s,
               serviceName: s === 'registrar' ? "Registrar's Office" : s === 'finance' ? 'Finance Office' : 'ICT Helpdesk',
               waitingCount: data.waitingCount || 0,
               servingNumber: data.serving?.queueNumber || null,
@@ -264,20 +289,22 @@ function StudentDashboard() {
         return
       }
       
-      const newEntry = await res.json()
+      const rawEntry = await res.json()
+      const newEntry = normalizeTicketEntry(rawEntry)
       const studentIdForHistory = formData.studentId.trim()
       sessionStorage.setItem('studentId', studentIdForHistory)
       setStudentIdHeader(studentIdForHistory)
       setLastTicket(newEntry)
       addDeviceTicketId(newEntry.id)
       setActiveTicketCount(prev => prev + 1)
-      const refNum = getReferenceNumber(newEntry.id)
+      const refNum = getReferenceNumber(newEntry)
       const storedTicket: StoredTicket = {
         id: newEntry.id,
         queueNumber: newEntry.queueNumber,
         serviceType: newEntry.serviceType,
         createdAt: newEntry.createdAt,
-        referenceNumber: refNum
+        referenceNumber: refNum,
+        status: newEntry.status,
       }
       const historyKey = `ticketHistory_${studentIdForHistory}`
       const existing = localStorage.getItem(historyKey)
@@ -286,7 +313,6 @@ function StudentDashboard() {
       localStorage.setItem(historyKey, JSON.stringify(history))
       setTicketHistory(history)
       queryClient.invalidateQueries({ queryKey: ['service-stats'] })
-      queryClient.invalidateQueries({ queryKey: ['live-queue-status'] })
       queryClient.invalidateQueries({ predicate: query => Array.isArray(query.queryKey) && query.queryKey[0] === 'ticket-history' })
       setFormData({ phone: '', studentId: '', serviceType: 'registrar' })
       setShowTicketModal(true)
@@ -541,9 +567,15 @@ function StudentDashboard() {
                     <div className="text-5xl font-black" style={{color: getServiceColor(lastTicket.serviceType)}}>#{lastTicket.queueNumber}</div>
                   </div>
                   <div className="bg-gradient-to-br from-gray-50 to-gray-100 rounded-2xl p-4 border border-gray-200">
-                    <p className="text-xs text-gray-600 uppercase tracking-wide mb-2">Service</p>
+                    <p className="text-xs text-gray-600 uppercase tracking-wide mb-2">Office</p>
                     <p className="font-semibold text-gray-800 text-lg">{getServiceName(lastTicket.serviceType)}</p>
                     <p className="text-xs text-gray-500 mt-1">{new Date(lastTicket.createdAt).toLocaleTimeString([], {hour: '2-digit', minute: '2-digit'})}</p>
+                    {(() => {
+                      const officeStats = serviceStats.find((service: any) => service.serviceType === lastTicket.serviceType)
+                      return officeStats ? (
+                        <p className="text-xs text-gray-600 mt-3">Office active tickets: <span className="font-semibold text-gray-800">{officeStats.activeCount}</span></p>
+                      ) : null
+                    })()}
                   </div>
                   <div className="bg-gradient-to-br from-blue-50 to-blue-100 rounded-2xl p-4 border border-blue-200 md:col-span-2">
                     <p className="text-xs text-gray-600 uppercase tracking-wide mb-2">Reference Number</p>
