@@ -84,6 +84,7 @@ const app = express()
 const corsOptions = {
   origin: (origin, callback) => {
     const allowedOrigins = [
+      // Local development
       'http://localhost:3000',
       'http://localhost:3001',
       'http://localhost:3002',
@@ -102,6 +103,9 @@ const corsOptions = {
       'http://127.0.0.1:5555',
       'http://127.0.0.1:9999',
       'http://127.0.0.1:5173',
+      // Production URLs
+      'https://jkuat-online-queue.onrender.com',
+      'http://jkuat-online-queue.onrender.com',
     ]
 
     // Add production URLs from environment
@@ -109,9 +113,15 @@ const corsOptions = {
       allowedOrigins.push(process.env.FRONTEND_URL)
     }
 
+    // Allow requests without origin (same-origin requests from server)
+    // Or allow if origin is in allowedOrigins
     if (!origin || allowedOrigins.includes(origin)) {
       callback(null, true)
     } else {
+      // Log rejected origins in production for debugging
+      if (NODE_ENV === 'production') {
+        console.warn(`⚠️  CORS request from unauthorized origin: ${origin}`)
+      }
       callback(new Error('CORS not allowed'))
     }
   },
