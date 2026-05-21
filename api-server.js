@@ -35,8 +35,7 @@ const maxRetries = 5
 async function initializeDatabase() {
   const connectionString = process.env.DATABASE_URL
   if (!connectionString) {
-    console.error('❌ DATABASE_URL not set')
-    process.exit(1)
+    throw new Error('DATABASE_URL not set')
   }
 
   try {
@@ -49,21 +48,11 @@ async function initializeDatabase() {
     // Test connection
     await client`SELECT 1`
     db = drizzle(client, { schema: { queueEntries, statusEnum, serviceEnum } })
-    console.log('✓ Database connected successfully')
     connectionAttempts = 0
     return true
   } catch (error) {
     connectionAttempts++
-    console.error(`❌ Database connection failed (attempt ${connectionAttempts}/${maxRetries}):`, error.message)
-    
-    if (connectionAttempts < maxRetries) {
-      console.log(`Retrying in 5 seconds...`)
-      await new Promise(r => setTimeout(r, 5000))
-      return initializeDatabase()
-    } else {
-      console.error('❌ Max retries reached. Cannot connect to database.')
-      process.exit(1)
-    }
+    throw new Error(`Database connection failed (attempt ${connectionAttempts}): ${error.message}`)
   }
 }
 
@@ -146,9 +135,14 @@ function checkAuth(req, res, next) {
 
 // Routes
 
-// Health check
+// Health check - returns immediately, doesn't require database
 app.get('/api/health', (req, res) => {
-  res.json({ status: 'ok', timestamp: new Date().toISOString(), environment: NODE_ENV })
+  res.json({ 
+    status: 'ok', 
+    timestamp: new Date().toISOString(), 
+    environment: NODE_ENV,
+    databaseConnected: !!db
+  })
 })
 
 // GET /api/queue - Get queue stats for a service
@@ -451,15 +445,36 @@ if (NODE_ENV === 'production') {
 
 // Initialize database and start server
 async function startServer() {
-  await initializeDatabase()
-
-  app.listen(PORT, '0.0.0.0', () => {
+  // Start the HTTP server immediately - don't block on database
+  const server = app.listen(PORT, '0.0.0.0', () => {
     console.log(`\n✓ Backend server running on port ${PORT}`)
     console.log(`✓ Environment: ${NODE_ENV}`)
     console.log(`✓ API endpoints available at /api/*`)
-    console.log(`✓ Database: Connected and ready`)
     console.log(`\n`)
   })
+
+  // Try to initialize database in the background with retries
+  initializeDatabase()
+    .then(() => {
+      console.log(`✓ Database: Connected and ready`)
+    })
+    .catch((error) => {
+      console.error('❌ Failed to connect to database:', error.message)
+      console.error('⚠️  Server is still running, but database features are unavailable')
+      console.error('Retries will continue in the background...')
+      
+      // Keep trying to reconnect every 30 seconds
+      const reconnectInterval = setInterval(async () => {
+        console.log('Attempting to reconnect to database...')
+        try {
+          await initializeDatabase()
+          console.log('✓ Database reconnected successfully!')
+          clearInterval(reconnectInterval)
+        } catch (e) {
+          console.error('Reconnection attempt failed:', e.message)
+        }
+      }, 30000)
+    })
 }
 
 startServer().catch((error) => {
