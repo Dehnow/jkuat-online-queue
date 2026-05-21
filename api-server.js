@@ -4,9 +4,9 @@ import dotenv from 'dotenv'
 import { drizzle } from 'drizzle-orm/postgres-js'
 import postgres from 'postgres'
 import { eq, and, asc, desc, count as dbCount, sql } from 'drizzle-orm'
-import { pgTable, serial, text, timestamp, integer, pgEnum } from 'drizzle-orm/pg-core'
 import path from 'path'
 import { fileURLToPath } from 'url'
+import { queueEntries, statusEnum, serviceEnum } from './db/schema.ts'
 
 dotenv.config()
 
@@ -33,21 +33,6 @@ if (NODE_ENV === 'production') {
   console.warn('⚠️  Development mode: DATABASE_URL may not be required for local testing')
 }
 
-// Schema
-const statusEnum = pgEnum('queue_status', ['waiting', 'serving', 'served', 'cancelled'])
-const serviceEnum = pgEnum('service_type', ['registrar', 'finance', 'ict_helpdesk'])
-
-const queueEntries = pgTable('queue_entries', {
-  id: serial().primaryKey(),
-  name: text('name').notNull(),
-  studentId: text('student_id').notNull(),
-  serviceType: serviceEnum('service_type').notNull(),
-  queueNumber: integer('queue_number').notNull(),
-  status: statusEnum('status').notNull().default('waiting'),
-  createdAt: timestamp('created_at').defaultNow(),
-  servedAt: timestamp('served_at'),
-})
-
 // Database Connection with retry logic
 let db = null
 let connectionAttempts = 0
@@ -68,7 +53,11 @@ async function initializeDatabase() {
 
     // Test connection
     await client`SELECT 1`
-    db = drizzle(client, { schema: { queueEntries } })
+    
+    // Initialize Drizzle with schema including enums
+    db = drizzle(client, { 
+      schema: { queueEntries, statusEnum, serviceEnum }
+    })
     
     // Verify tables exist by running a test query
     try {

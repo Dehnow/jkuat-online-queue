@@ -11,7 +11,7 @@
     "server": "node api-server.js",
     "start": "npm run build && npm run server",
     "production": "node api-server.js",
-    "migrate": "drizzle-kit migrate",
+    "migrate": "node db/run-migrations.js",
     "test:resilience": "node test-resilience.js"
   },
   "dependencies": {
