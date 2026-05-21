@@ -9,10 +9,16 @@ const rootRoute = new RootRoute({
   component: RootLayout,
 })
 
-// Student dashboard (home page)
+// Login page (landing page)
 const indexRoute = new Route({
   getParentRoute: () => rootRoute,
   path: '/',
+  component: LoginPage,
+})
+
+const dashboardRoute = new Route({
+  getParentRoute: () => rootRoute,
+  path: '/dashboard',
   component: StudentDashboard,
 })
 
@@ -36,6 +42,7 @@ const trackRoute = new Route({
 
 const routeTree = rootRoute.addChildren([
   indexRoute,
+  dashboardRoute,
   adminRoute,
   loginRoute,
   trackRoute,

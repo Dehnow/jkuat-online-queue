@@ -33,7 +33,7 @@ export default function LoginPage() {
     sessionStorage.setItem('studentId', username.trim())
     sessionStorage.setItem('studentAuth', btoa(`${username}:${password}`))
     sessionStorage.setItem('userRole', 'student')
-    navigate({ to: '/' })
+    navigate({ to: '/dashboard' })
   }
 
   // Staff login (Basic Auth)
