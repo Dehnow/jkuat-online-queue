@@ -69,6 +69,18 @@ async function initializeDatabase() {
     // Test connection
     await client`SELECT 1`
     db = drizzle(client, { schema: { queueEntries } })
+    
+    // Verify tables exist by running a test query
+    try {
+      await db.select({ count: sql`cast(count(*) as integer)` })
+        .from(queueEntries)
+        .limit(1)
+      console.log('✓ Database tables verified and ready')
+    } catch (tableError) {
+      console.warn('⚠️  Database tables may not exist yet. Migrations should have been run during build.')
+      console.warn('Table verification error:', tableError.message)
+    }
+    
     connectionAttempts = 0
     return true
   } catch (error) {

@@ -10,7 +10,9 @@
     "preview": "vite preview",
     "server": "node api-server.js",
     "start": "npm run build && npm run server",
-    "production": "node api-server.js"
+    "production": "node api-server.js",
+    "migrate": "drizzle-kit migrate",
+    "test:resilience": "node test-resilience.js"
   },
   "dependencies": {
     "@tanstack/match-sorter-utils": "^8.15.1",

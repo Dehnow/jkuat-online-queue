@@ -79,20 +79,25 @@ export default function AdminPage() {
   useEffect(() => {
     const storedAuth = sessionStorage.getItem('adminAuth')
     if (!storedAuth) {
+      console.log('[Admin] No auth token found, redirecting to login')
       navigate({ to: '/login' })
       return
     }
+    console.log('[Admin] Validating auth token...')
     fetch('/api/admin/report', { headers: { Authorization: `Basic ${storedAuth}` } })
       .then(res => {
         if (res.ok) {
+          console.log('[Admin] Auth validation successful')
           setAuth(storedAuth)
           setLoggedIn(true)
         } else {
+          console.warn('[Admin] Auth validation failed with status:', res.status)
           sessionStorage.removeItem('adminAuth')
           navigate({ to: '/login' })
         }
       })
-      .catch(() => {
+      .catch((err) => {
+        console.error('[Admin] Auth validation error:', err)
         sessionStorage.removeItem('adminAuth')
         navigate({ to: '/login' })
       })
@@ -100,8 +105,12 @@ export default function AdminPage() {
 
   // Fetch all data (queue stats and report)
   const fetchAllData = async () => {
-    if (!auth) return
+    if (!auth) {
+      console.warn('[Admin] No auth token available, skipping data fetch')
+      return
+    }
     try {
+      console.log('[Admin] Fetching all queue data...')
       const services = [
         { id: 'registrar', name: "Registrar's Office", color: '#16a34a', bgColor: '#dcfce7', icon: <Building2 className="w-5 h-5" /> },
         { id: 'finance', name: 'Finance Office', color: '#f59e0b', bgColor: '#fef3c7', icon: <Banknote className="w-5 h-5" /> },
@@ -109,16 +118,31 @@ export default function AdminPage() {
       ]
       const queues = await Promise.all(
         services.map(async (svc) => {
-          const res = await fetch(`/api/queue?service=${svc.id}`)
-          const data = await res.json()
-          return {
-            serviceId: svc.id,
-            serviceName: svc.name,
-            waitingCount: data.waitingCount || 0,
-            serving: data.serving || null,
-            color: svc.color,
-            bgColor: svc.bgColor,
-            icon: svc.icon,
+          try {
+            const res = await fetch(`/api/queue?service=${svc.id}`)
+            if (!res.ok) throw new Error(`HTTP ${res.status}`)
+            const data = await res.json()
+            console.log(`[Admin] Queue data for ${svc.id}:`, data)
+            return {
+              serviceId: svc.id,
+              serviceName: svc.name,
+              waitingCount: data.waitingCount || 0,
+              serving: data.serving || null,
+              color: svc.color,
+              bgColor: svc.bgColor,
+              icon: svc.icon,
+            }
+          } catch (err) {
+            console.error(`[Admin] Error fetching queue for ${svc.id}:`, err)
+            return {
+              serviceId: svc.id,
+              serviceName: svc.name,
+              waitingCount: 0,
+              serving: null,
+              color: svc.color,
+              bgColor: svc.bgColor,
+              icon: svc.icon,
+            }
           }
         })
       )
@@ -146,12 +170,19 @@ export default function AdminPage() {
       setWaitingList(waitingEntries)
 
       // Fetch report (served entries) for graph
-      const reportRes = await fetch('/api/admin/report', { headers: { Authorization: `Basic ${auth}` } })
-      const servedEntries = await reportRes.json()
-      setReportData(servedEntries)
-      setChartData(getHourlyServed(servedEntries))
+      try {
+        const reportRes = await fetch('/api/admin/report', { headers: { Authorization: `Basic ${auth}` } })
+        if (!reportRes.ok) throw new Error(`Report fetch failed: ${reportRes.status}`)
+        const servedEntries = await reportRes.json()
+        console.log(`[Admin] Served entries count: ${servedEntries.length}`)
+        setReportData(servedEntries)
+        setChartData(getHourlyServed(servedEntries))
+      } catch (err) {
+        console.error('[Admin] Error fetching report:', err)
+        // Continue without report data rather than failing completely
+      }
     } catch (err) {
-      console.error(err)
+      console.error('[Admin] fetchAllData error:', err)
     }
   }
 
@@ -171,14 +202,23 @@ export default function AdminPage() {
   const serveNext = async () => {
     setActionLoading(true)
     try {
-      await fetch('/api/admin/serve', {
+      console.log(`[Admin] Serving next for service: ${selectedOffice}`)
+      const res = await fetch('/api/admin/serve', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', Authorization: `Basic ${auth}` },
         body: JSON.stringify({ serviceType: selectedOffice, action: 'serve_next' }),
       })
+      
+      if (!res.ok) {
+        console.error(`[Admin] Serve Next failed with status ${res.status}`)
+        throw new Error(`Serve failed: ${res.status}`)
+      }
+      
+      const data = await res.json()
+      console.log(`[Admin] Serve successful:`, data)
       await fetchAllData()
     } catch (err) {
-      console.error(err)
+      console.error('[Admin] Serve Next error:', err)
     } finally {
       setActionLoading(false)
     }

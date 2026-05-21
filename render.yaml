@@ -2,7 +2,7 @@ services:
   - type: web
     name: jkuat-queue
     runtime: node
-    buildCommand: npm ci && npm run build
+    buildCommand: npm ci && npm run build && npm run migrate
     startCommand: npm run production
     envVars:
       - key: NODE_ENV
