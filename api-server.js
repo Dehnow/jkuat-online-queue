@@ -63,8 +63,22 @@ async function initializeDatabase() {
     async function ensureSchemaExists() {
       try {
         // Create enums if they do not exist
-        await client`CREATE TYPE IF NOT EXISTS "service_type" AS ENUM('registrar', 'finance', 'ict_helpdesk')`
-        await client`CREATE TYPE IF NOT EXISTS "queue_status" AS ENUM('waiting', 'serving', 'served', 'cancelled')`
+        await client`
+          DO $$
+          BEGIN
+            IF NOT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'service_type') THEN
+              CREATE TYPE "service_type" AS ENUM ('registrar', 'finance', 'ict_helpdesk');
+            END IF;
+          END$$;
+        `
+        await client`
+          DO $$
+          BEGIN
+            IF NOT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'queue_status') THEN
+              CREATE TYPE "queue_status" AS ENUM ('waiting', 'serving', 'served', 'cancelled');
+            END IF;
+          END$$;
+        `
 
         // Create table if it does not exist
         await client`
