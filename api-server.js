@@ -106,7 +106,12 @@ app.use(express.json())
 
 // Serve static files in production
 if (NODE_ENV === 'production') {
-  app.use(express.static(path.join(__dirname, 'dist')))
+  const staticPath = path.join(__dirname, 'dist')
+  console.log(`📁 Serving static files from: ${staticPath}`)
+  app.use(express.static(staticPath, { 
+    maxAge: '1h',
+    etag: false
+  }))
 }
 
 const ADMIN_USERNAME = 'Admin0375'
@@ -436,12 +441,17 @@ app.get('/api/admin/report', checkAuth, async (req, res) => {
   }
 })
 
-// SPA fallback - serve index.html for all unknown routes in production
-if (NODE_ENV === 'production') {
-  app.get('*', (req, res) => {
-    res.sendFile(path.join(__dirname, 'dist', 'index.html'))
-  })
-}
+// SPA fallback - serve index.html for all unknown routes (both dev and production)
+app.get('*', (req, res) => {
+  if (NODE_ENV === 'production') {
+    const indexPath = path.join(__dirname, 'dist', 'index.html')
+    console.log(`📄 Serving SPA fallback to ${req.path} from dist`)
+    res.sendFile(indexPath)
+  } else {
+    // In development, send 404 to avoid confusion (Vite handles client routing)
+    res.status(404).json({ error: 'Not found. In development, Vite handles client routes.' })
+  }
+})
 
 // Initialize database and start server
 async function startServer() {

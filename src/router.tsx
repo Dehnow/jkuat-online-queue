@@ -1,4 +1,4 @@
-import { createRouter, RootRoute, Route } from '@tanstack/react-router'
+import { createRouter, RootRoute, Route, Navigate } from '@tanstack/react-router'
 import RootLayout from './routes/__root'
 import StudentDashboard from './routes/index'
 import AdminPage from './routes/admin'
@@ -9,10 +9,11 @@ const rootRoute = new RootRoute({
   component: RootLayout,
 })
 
+// Redirect root to login page
 const indexRoute = new Route({
   getParentRoute: () => rootRoute,
   path: '/',
-  component: StudentDashboard,
+  component: () => <Navigate to="/login" />,
 })
 
 const adminRoute = new Route({

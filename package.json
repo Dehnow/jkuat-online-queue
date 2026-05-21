@@ -3,14 +3,11 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "concurrently \"npm run dev:client\" \"npm run dev:server\"",
-    "dev:client": "vite",
-    "dev:server": "node --watch api-server.js",
+    "dev": "vite dev --port 3000",
     "build": "vite build",
-    "preview": "vite preview",
-    "server": "node api-server.js",
-    "start": "npm run build && npm run server",
-    "production": "node api-server.js"
+    "start": "node .vercel/server/index.mjs",
+    "db:generate": "drizzle-kit generate",
+    "db:migrate": "drizzle-kit migrate"
   },
   "dependencies": {
     "@tanstack/match-sorter-utils": "^8.15.1",
