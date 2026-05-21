@@ -9,11 +9,11 @@ const rootRoute = new RootRoute({
   component: RootLayout,
 })
 
-// Redirect root to login page
+// Student dashboard (home page)
 const indexRoute = new Route({
   getParentRoute: () => rootRoute,
   path: '/',
-  component: () => <Navigate to="/login" />,
+  component: StudentDashboard,
 })
 
 const adminRoute = new Route({
