@@ -59,15 +59,49 @@ async function initializeDatabase() {
       schema: { queueEntries, statusEnum, serviceEnum }
     })
     
-    // Verify tables exist by running a test query
+    // Ensure enums and table exist (attempt idempotent creation if missing)
+    async function ensureSchemaExists() {
+      try {
+        // Create enums if they do not exist
+        await client`CREATE TYPE IF NOT EXISTS "service_type" AS ENUM('registrar', 'finance', 'ict_helpdesk')`
+        await client`CREATE TYPE IF NOT EXISTS "queue_status" AS ENUM('waiting', 'serving', 'served', 'cancelled')`
+
+        // Create table if it does not exist
+        await client`
+          CREATE TABLE IF NOT EXISTS "queue_entries" (
+            "id" serial PRIMARY KEY NOT NULL,
+            "name" text NOT NULL,
+            "student_id" text NOT NULL,
+            "service_type" "service_type" NOT NULL,
+            "queue_number" integer NOT NULL,
+            "status" "queue_status" DEFAULT 'waiting' NOT NULL,
+            "created_at" timestamp DEFAULT now(),
+            "served_at" timestamp
+          )`
+        console.log('✓ Ensured database schema exists (enums + table)')
+      } catch (err) {
+        console.warn('⚠️  Failed to ensure schema exists:', err.message)
+      }
+    }
+
+    // Verify tables exist by running a test query. If verification fails, attempt to create schema and verify again.
     try {
       await db.select({ count: sql`cast(count(*) as integer)` })
         .from(queueEntries)
         .limit(1)
       console.log('✓ Database tables verified and ready')
     } catch (tableError) {
-      console.warn('⚠️  Database tables may not exist yet. Migrations should have been run during build.')
+      console.warn('⚠️  Database tables may not exist yet. Attempting to create schema...')
       console.warn('Table verification error:', tableError.message)
+      await ensureSchemaExists()
+      try {
+        await db.select({ count: sql`cast(count(*) as integer)` })
+          .from(queueEntries)
+          .limit(1)
+        console.log('✓ Database tables verified after schema creation')
+      } catch (err2) {
+        console.warn('⚠️  Table verification still failing after attempting to create schema:', err2.message)
+      }
     }
     
     connectionAttempts = 0
