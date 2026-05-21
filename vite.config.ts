@@ -24,5 +24,15 @@ export default defineConfig({
     outDir: 'dist',
     target: 'esnext',
     sourcemap: false,
+    rollupOptions: {
+      output: {
+        manualChunks: {
+          'react-vendor': ['react', 'react-dom'],
+          'tanstack': ['@tanstack/react-router', '@tanstack/react-query'],
+          'charts': ['recharts'],
+        },
+      },
+    },
+    chunkSizeWarningLimit: 1000,
   },
 });
