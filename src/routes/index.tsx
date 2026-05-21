@@ -167,8 +167,10 @@ function StudentDashboard() {
     queryFn: async () => {
       if (!studentIdHeader) return { tickets: [] }
       try {
-        const result = await getTicketHistory(studentIdHeader)
-        return result
+        const response = await fetch(`/api/ticketHistory?studentId=${encodeURIComponent(studentIdHeader)}`)
+        if (!response.ok) throw new Error(`HTTP ${response.status}`)
+        const data = await response.json()
+        return data
       } catch (err) {
         console.error('Error fetching ticket history from API:', err)
         return { tickets: [] }
