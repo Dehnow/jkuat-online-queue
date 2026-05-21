@@ -60,19 +60,38 @@ async function initializeDatabase() {
   }
 
   try {
+    console.log('📡 Postgres client connecting...')
     const client = postgres(connectionString, {
       max: 10, // Connection pool size
       idle_timeout: 30,
       connect_timeout: 10,
+      onnotice: (notice) => {
+        if (notice.severity !== 'NOTICE') {
+          console.warn('🔔 Database Notice:', notice.message)
+        }
+      }
     })
 
     // Test connection
-    await client`SELECT 1`
-    db = drizzle(client, { schema: { queueEntries, statusEnum, serviceEnum } })
+    console.log('🧪 Testing database connection...')
+    const testResult = await client`SELECT 1 as connection_test`
+    console.log('✓ Database connection test passed:', testResult)
+    
+    // Initialize Drizzle with only table schema (enums are defined within tables)
+    console.log('🔗 Initializing Drizzle ORM...')
+    db = drizzle(client, { schema: { queueEntries } })
     connectionAttempts = 0
+    console.log('✓ Drizzle ORM initialized successfully')
+    
+    // Verify table exists
+    console.log('📊 Verifying queue_entries table exists...')
+    const tableCheck = await client`SELECT COUNT(*) as count FROM information_schema.tables WHERE table_name='queue_entries'`
+    console.log('✓ Table verification:', tableCheck)
+    
     return true
   } catch (error) {
     connectionAttempts++
+    console.error(`❌ Database connection error (attempt ${connectionAttempts}):`, error)
     throw new Error(`Database connection failed (attempt ${connectionAttempts}): ${error.message}`)
   }
 }
@@ -133,6 +152,101 @@ const corsOptions = {
 app.use(cors(corsOptions))
 app.use(express.json())
 
+// Global error handling middleware for JSON parsing
+app.use((err, req, res, next) => {
+  if (err instanceof SyntaxError && err.status === 400 && 'body' in err) {
+    console.error('JSON parse error:', err)
+    return res.status(400).json({ error: 'Invalid JSON in request body' })
+  }
+  next()
+})
+
+// Request validation middleware
+function validateRequest(schema) {
+  return (req, res, next) => {
+    try {
+      const errors = []
+      
+      for (const [field, rules] of Object.entries(schema)) {
+        const value = req.body[field] || req.query[field]
+        
+        if (rules.required && (value === undefined || value === null || value === '')) {
+          errors.push(`${field} is required`)
+        }
+        
+        if (value && rules.type === 'string' && typeof value !== 'string') {
+          errors.push(`${field} must be a string`)
+        }
+        
+        if (value && rules.type === 'number' && isNaN(value)) {
+          errors.push(`${field} must be a number`)
+        }
+        
+        if (rules.enum && value && !rules.enum.includes(value)) {
+          errors.push(`${field} must be one of: ${rules.enum.join(', ')}`)
+        }
+        
+        if (rules.minLength && value && value.length < rules.minLength) {
+          errors.push(`${field} must be at least ${rules.minLength} characters`)
+        }
+        
+        if (rules.maxLength && value && value.length > rules.maxLength) {
+          errors.push(`${field} must be at most ${rules.maxLength} characters`)
+        }
+      }
+      
+      if (errors.length > 0) {
+        return res.status(400).json({ error: 'Validation failed', details: errors })
+      }
+      
+      next()
+    } catch (err) {
+      console.error('Validation middleware error:', err)
+      res.status(500).json({ error: 'Validation error' })
+    }
+  }
+}
+
+// Request correlation ID middleware for logging
+app.use((req, res, next) => {
+  req.id = `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`
+  res.setHeader('X-Request-ID', req.id)
+  next()
+})
+
+// Rate limiting map (in-memory, resets on server restart)
+const rateLimitMap = new Map()
+const RATE_LIMIT_WINDOW = 60000 // 1 minute
+const RATE_LIMIT_MAX_REQUESTS = 30 // max 30 requests per minute per IP
+
+function checkRateLimit(req, res, next) {
+  const ip = req.ip || req.connection.remoteAddress
+  const now = Date.now()
+  
+  if (!rateLimitMap.has(ip)) {
+    rateLimitMap.set(ip, { count: 1, window: now })
+    return next()
+  }
+  
+  const record = rateLimitMap.get(ip)
+  if (now - record.window > RATE_LIMIT_WINDOW) {
+    record.count = 1
+    record.window = now
+    return next()
+  }
+  
+  record.count++
+  if (record.count > RATE_LIMIT_MAX_REQUESTS) {
+    return res.status(429).json({ 
+      error: 'Too many requests',
+      message: 'Rate limit exceeded. Please try again later.',
+      retryAfter: Math.ceil((record.window + RATE_LIMIT_WINDOW - now) / 1000)
+    })
+  }
+  
+  next()
+}
+
 // Database status middleware - check if DB is ready for API requests (except health check)
 app.use((req, res, next) => {
   // Allow health checks and static files without database
@@ -145,12 +259,16 @@ app.use((req, res, next) => {
     return res.status(503).json({ 
       error: 'Service Temporarily Unavailable',
       message: 'Database is initializing. Please try again in a few moments.',
-      status: 'INITIALIZING'
+      status: 'INITIALIZING',
+      requestId: req.id
     })
   }
   
   next()
 })
+
+// Apply rate limiting to queue creation endpoint
+app.use('/api/queue', checkRateLimit)
 
 // Serve static files in production
 if (NODE_ENV === 'production') {
@@ -186,6 +304,24 @@ function checkAuth(req, res, next) {
   }
 }
 
+// Database operation wrapper with comprehensive error logging
+async function safeDbQuery(requestId, operation, description) {
+  try {
+    console.log(`[${requestId}] 🔍 Executing: ${description}`)
+    const result = await operation()
+    console.log(`[${requestId}] ✓ Query successful: ${description}`)
+    return result
+  } catch (error) {
+    console.error(`[${requestId}] ❌ Database query failed: ${description}`)
+    console.error(`[${requestId}] Error type:`, error.constructor.name)
+    console.error(`[${requestId}] Error message:`, error.message)
+    console.error(`[${requestId}] Error code:`, error.code)
+    if (error.detail) console.error(`[${requestId}] Error detail:`, error.detail)
+    if (error.hint) console.error(`[${requestId}] Error hint:`, error.hint)
+    throw error
+  }
+}
+
 // Routes
 
 // Health check - returns immediately, doesn't require database
@@ -194,298 +330,654 @@ app.get('/api/health', (req, res) => {
     status: 'ok', 
     timestamp: new Date().toISOString(), 
     environment: NODE_ENV,
-    databaseConnected: !!db
+    databaseConnected: !!db,
+    uptime: process.uptime()
   })
+})
+
+// Connection health check endpoint (checks DB connectivity)
+app.get('/api/health/db', async (req, res) => {
+  const requestId = req.id
+  try {
+    if (!db) {
+      return res.status(503).json({ 
+        status: 'disconnected',
+        databaseConnected: false,
+        requestId
+      })
+    }
+
+    // Try a simple query to verify connection
+    await db.select({ count: sql`cast(count(*) as integer)` })
+      .from(queueEntries)
+      .limit(1)
+      .catch(err => {
+        console.error(`[${requestId}] Health check query failed:`, err)
+        throw err
+      })
+
+    res.json({ 
+      status: 'healthy',
+      databaseConnected: true,
+      requestId
+    })
+  } catch (error) {
+    console.error(`[${requestId}] Database health check failed:`, error.message)
+    res.status(503).json({ 
+      status: 'unhealthy',
+      databaseConnected: false,
+      error: error.message,
+      requestId
+    })
+  }
 })
 
 // GET /api/queue - Get queue stats for a service
 app.get('/api/queue', async (req, res) => {
+  const requestId = req.id
   try {
     if (!db) {
-      return res.status(503).json({ error: 'Database not ready' })
+      console.warn(`[${requestId}] ⚠️  Database not initialized`)
+      return res.status(503).json({ 
+        error: 'Database not ready',
+        requestId
+      })
     }
 
     const { service } = req.query
 
     if (!service) {
-      return res.status(400).json({ error: 'Missing service parameter' })
+      console.warn(`[${requestId}] ⚠️  Missing service parameter`)
+      return res.status(400).json({ 
+        error: 'Missing service parameter',
+        requestId
+      })
     }
 
-    const waitingCount = await db
-      .select({ count: sql`cast(count(*) as integer)` })
-      .from(queueEntries)
-      .where(
-        and(
-          eq(queueEntries.serviceType, service),
-          eq(queueEntries.status, 'waiting'),
-        ),
-      )
-      .then((res) => res[0]?.count ?? 0)
+    // Validate service
+    const validServices = ['registrar', 'finance', 'ict_helpdesk']
+    if (!validServices.includes(service)) {
+      console.warn(`[${requestId}] ⚠️  Invalid service: ${service}`)
+      return res.status(400).json({ 
+        error: 'Invalid service parameter',
+        validServices,
+        requestId
+      })
+    }
 
-    const serving = await db
-      .select()
-      .from(queueEntries)
-      .where(
-        and(
-          eq(queueEntries.serviceType, service),
-          eq(queueEntries.status, 'serving'),
-        ),
+    try {
+      const waitingCount = await safeDbQuery(
+        requestId,
+        () => db
+          .select({ count: sql`cast(count(*) as integer)` })
+          .from(queueEntries)
+          .where(
+            and(
+              eq(queueEntries.serviceType, service),
+              eq(queueEntries.status, 'waiting'),
+            ),
+          )
+          .then((res) => res[0]?.count ?? 0),
+        `Count waiting entries for ${service}`
       )
-      .limit(1)
-      .then((res) => res[0] || null)
 
-    res.json({ waitingCount, serving })
+      const serving = await safeDbQuery(
+        requestId,
+        () => db
+          .select()
+          .from(queueEntries)
+          .where(
+            and(
+              eq(queueEntries.serviceType, service),
+              eq(queueEntries.status, 'serving'),
+            ),
+          )
+          .limit(1)
+          .then((res) => res[0] || null),
+        `Fetch serving entry for ${service}`
+      )
+
+      console.log(`[${requestId}] ✓ Queue stats - waiting: ${waitingCount}, serving: ${serving?.queueNumber || 'none'}`)
+      res.json({ waitingCount, serving, requestId })
+    } catch (dbError) {
+      console.error(`[${requestId}] Database query failed:`, dbError.message)
+      res.status(500).json({ 
+        error: 'Failed to fetch queue',
+        message: 'Could not retrieve queue information. Please try again.',
+        requestId
+      })
+    }
   } catch (error) {
-    console.error('Error fetching queue:', error)
-    res.status(500).json({ error: 'Internal server error' })
+    console.error(`[${requestId}] Unhandled error in GET /api/queue:`, error.message)
+    res.status(500).json({ 
+      error: 'Internal server error',
+      requestId
+    })
   }
 })
 
 // POST /api/queue - Create new queue entry
 app.post('/api/queue', async (req, res) => {
+  const requestId = req.id
   try {
     if (!db) {
-      return res.status(503).json({ error: 'Database not ready' })
+      console.error(`[${requestId}] ❌ Database not initialized for POST /api/queue`)
+      return res.status(503).json({ 
+        error: 'Database not ready',
+        requestId,
+        retryAfter: 5
+      })
     }
 
     const { name, studentId, serviceType } = req.body
-
-    if (!name || !studentId || !serviceType) {
-      return res.status(400).json({ error: 'Missing required fields' })
+    
+    // Validate inputs
+    if (!name || typeof name !== 'string' || name.trim().length === 0) {
+      return res.status(400).json({ error: 'Invalid name provided', requestId })
+    }
+    
+    if (!studentId || typeof studentId !== 'string' || studentId.trim().length === 0) {
+      return res.status(400).json({ error: 'Invalid student ID provided', requestId })
+    }
+    
+    if (!serviceType || typeof serviceType !== 'string') {
+      return res.status(400).json({ error: 'Invalid service type provided', requestId })
     }
 
     // Validate service type
     const validServices = ['registrar', 'finance', 'ict_helpdesk']
     if (!validServices.includes(serviceType)) {
-      return res.status(400).json({ error: 'Invalid service type' })
+      console.warn(`[${requestId}] ⚠️  Invalid service type: ${serviceType}`)
+      return res.status(400).json({ 
+        error: 'Invalid service type',
+        validServices,
+        requestId
+      })
     }
 
-    // Server-side validation: Check daily limit (3 active tickets per student)
-    const activeCount = await db
-      .select({ count: sql`cast(count(*) as integer)` })
-      .from(queueEntries)
-      .where(
-        and(
-          eq(queueEntries.studentId, studentId),
-          eq(queueEntries.status, 'waiting')
+    const trimmedName = name.trim()
+    const trimmedStudentId = studentId.trim()
+    
+    console.log(`[${requestId}] 📝 Creating queue entry:`, { trimmedName, trimmedStudentId, serviceType })
+
+    try {
+      // Server-side validation: Check daily limit (3 active tickets per student)
+      const activeCount = await db
+        .select({ count: sql`cast(count(*) as integer)` })
+        .from(queueEntries)
+        .where(
+          and(
+            eq(queueEntries.studentId, trimmedStudentId),
+            eq(queueEntries.status, 'waiting')
+          )
         )
-      )
-      .then((res) => res[0]?.count ?? 0)
+        .then((res) => res[0]?.count ?? 0)
+        .catch(err => {
+          console.error(`[${requestId}] Error checking active count:`, err)
+          throw err
+        })
 
-    if (activeCount >= 3) {
-      return res.status(429).json({ 
-        error: 'Daily limit reached',
-        message: 'You have reached the maximum of 3 active tickets. Wait for one to be served.'
+      console.log(`[${requestId}] 📊 Student ${trimmedStudentId} active tickets: ${activeCount}`)
+
+      if (activeCount >= 3) {
+        return res.status(429).json({ 
+          error: 'Daily limit reached',
+          message: 'You have reached the maximum of 3 active tickets. Wait for one to be served.',
+          requestId
+        })
+      }
+
+      // Get next queue number with error handling
+      const lastEntry = await db
+        .select({ maxQueue: queueEntries.queueNumber })
+        .from(queueEntries)
+        .where(eq(queueEntries.serviceType, serviceType))
+        .orderBy(desc(queueEntries.queueNumber))
+        .limit(1)
+        .then((res) => res[0])
+        .catch(err => {
+          console.error(`[${requestId}] Error fetching last entry:`, err)
+          throw err
+        })
+
+      const nextQueueNumber = (lastEntry?.maxQueue ?? 0) + 1
+      console.log(`[${requestId}] 🔢 Next queue number for ${serviceType}: ${nextQueueNumber}`)
+
+      // Create the entry with comprehensive error handling
+      const newEntry = await db
+        .insert(queueEntries)
+        .values({
+          name: trimmedName,
+          studentId: trimmedStudentId,
+          serviceType,
+          queueNumber: nextQueueNumber,
+          status: 'waiting',
+        })
+        .returning()
+        .catch(err => {
+          console.error(`[${requestId}] Error inserting queue entry:`, err)
+          throw err
+        })
+
+      if (!newEntry || newEntry.length === 0) {
+        console.error(`[${requestId}] ❌ Failed to create queue entry - no returned data`)
+        return res.status(500).json({ 
+          error: 'Failed to create ticket',
+          message: 'Could not create queue entry. Please try again.',
+          requestId
+        })
+      }
+
+      console.log(`[${requestId}] ✅ Queue entry created:`, newEntry[0])
+      res.status(201).json({
+        ...newEntry[0],
+        requestId
+      })
+    } catch (dbError) {
+      console.error(`[${requestId}] ❌ Database operation failed:`, dbError.message)
+      console.error(`[${requestId}] 📋 Stack trace:`, dbError.stack)
+      
+      // Check if it's a connection error vs other error
+      if (dbError.message.includes('connection') || dbError.message.includes('pool')) {
+        return res.status(503).json({ 
+          error: 'Database connection issue',
+          message: 'Service is temporarily unavailable. Please try again in a few moments.',
+          requestId,
+          retryAfter: 10
+        })
+      }
+      
+      return res.status(500).json({ 
+        error: 'Failed to create ticket',
+        message: 'An error occurred while creating your ticket. Please try again.',
+        requestId
       })
     }
-
-    // Get next queue number
-    const lastEntry = await db
-      .select({ maxQueue: queueEntries.queueNumber })
-      .from(queueEntries)
-      .where(eq(queueEntries.serviceType, serviceType))
-      .orderBy(desc(queueEntries.queueNumber))
-      .limit(1)
-      .then((res) => res[0])
-
-    const nextQueueNumber = (lastEntry?.maxQueue ?? 0) + 1
-
-    const newEntry = await db
-      .insert(queueEntries)
-      .values({
-        name,
-        studentId,
-        serviceType,
-        queueNumber: nextQueueNumber,
-        status: 'waiting',
-      })
-      .returning()
-
-    res.status(201).json(newEntry[0])
   } catch (error) {
-    console.error('Error creating queue entry:', error)
-    res.status(500).json({ error: 'Internal server error' })
+    console.error(`[${requestId}] ❌ Unhandled error in POST /api/queue:`, error.message)
+    console.error(`[${requestId}] 📋 Stack trace:`, error.stack)
+    res.status(500).json({ 
+      error: 'Internal server error',
+      message: 'An unexpected error occurred. Please try again later.',
+      requestId
+    })
   }
 })
 
 // GET /api/queue/:id - Get queue entry details
 app.get('/api/queue/:id', async (req, res) => {
+  const requestId = req.id
   try {
     if (!db) {
-      return res.status(503).json({ error: 'Database not ready' })
+      return res.status(503).json({ 
+        error: 'Database not ready',
+        requestId
+      })
     }
 
     const { id } = req.params
 
-    const entry = await db
-      .select()
-      .from(queueEntries)
-      .where(eq(queueEntries.id, parseInt(id)))
-      .limit(1)
-      .then((res) => res[0] || null)
-
-    if (!entry) {
-      return res.status(404).json({ error: 'Queue entry not found' })
+    // Validate ID is a number
+    const entryId = parseInt(id)
+    if (isNaN(entryId)) {
+      return res.status(400).json({ 
+        error: 'Invalid queue entry ID',
+        requestId
+      })
     }
 
-    // Calculate waiting ahead
-    const ahead = await db
-      .select({ count: sql`cast(count(*) as integer)` })
-      .from(queueEntries)
-      .where(
-        and(
-          eq(queueEntries.serviceType, entry.serviceType),
-          eq(queueEntries.status, 'waiting'),
-        ),
-      )
-      .then((res) => res[0]?.count ?? 0)
+    try {
+      const entry = await db
+        .select()
+        .from(queueEntries)
+        .where(eq(queueEntries.id, entryId))
+        .limit(1)
+        .then((res) => res[0] || null)
+        .catch(err => {
+          console.error(`[${requestId}] Error fetching entry:`, err)
+          throw err
+        })
 
-    const serving = await db
-      .select()
-      .from(queueEntries)
-      .where(
-        and(
-          eq(queueEntries.serviceType, entry.serviceType),
-          eq(queueEntries.status, 'serving'),
-        ),
-      )
-      .limit(1)
-      .then((res) => res[0])
+      if (!entry) {
+        return res.status(404).json({ 
+          error: 'Queue entry not found',
+          requestId
+        })
+      }
 
-    res.json({
-      ...entry,
-      waitingAhead: ahead,
-      currentlyServing: serving?.queueNumber || null,
-    })
+      // Calculate waiting ahead with error handling
+      const ahead = await db
+        .select({ count: sql`cast(count(*) as integer)` })
+        .from(queueEntries)
+        .where(
+          and(
+            eq(queueEntries.serviceType, entry.serviceType),
+            eq(queueEntries.status, 'waiting'),
+          ),
+        )
+        .then((res) => res[0]?.count ?? 0)
+        .catch(err => {
+          console.error(`[${requestId}] Error counting ahead:`, err)
+          // Return 0 as fallback to avoid complete failure
+          return 0
+        })
+
+      const serving = await db
+        .select()
+        .from(queueEntries)
+        .where(
+          and(
+            eq(queueEntries.serviceType, entry.serviceType),
+            eq(queueEntries.status, 'serving'),
+          ),
+        )
+        .limit(1)
+        .then((res) => res[0])
+        .catch(err => {
+          console.error(`[${requestId}] Error fetching serving entry:`, err)
+          // Continue without serving info if error
+          return null
+        })
+
+      res.json({
+        ...entry,
+        waitingAhead: ahead,
+        currentlyServing: serving?.queueNumber || null,
+        requestId
+      })
+    } catch (dbError) {
+      console.error(`[${requestId}] Database query failed:`, dbError.message)
+      res.status(500).json({ 
+        error: 'Failed to fetch queue entry',
+        requestId
+      })
+    }
   } catch (error) {
-    console.error('Error fetching queue entry:', error)
-    res.status(500).json({ error: 'Internal server error' })
+    console.error(`[${requestId}] Unhandled error in GET /api/queue/:id:`, error.message)
+    res.status(500).json({ 
+      error: 'Internal server error',
+      requestId
+    })
   }
 })
 
 // GET /api/ticketHistory - Get student's ticket history
 app.get('/api/ticketHistory', async (req, res) => {
+  const requestId = req.id
   try {
     if (!db) {
-      return res.status(503).json({ error: 'Database not ready' })
+      return res.status(503).json({ 
+        error: 'Database not ready',
+        tickets: [],
+        requestId
+      })
     }
 
     const { studentId } = req.query
 
-    if (!studentId || typeof studentId !== 'string') {
-      return res.status(400).json({ error: 'Student ID is required', tickets: [] })
+    if (!studentId || typeof studentId !== 'string' || studentId.trim().length === 0) {
+      return res.status(400).json({ 
+        error: 'Student ID is required',
+        tickets: [],
+        requestId
+      })
     }
 
-    const tickets = await db
-      .select()
-      .from(queueEntries)
-      .where(eq(queueEntries.studentId, studentId))
-      .orderBy(desc(queueEntries.createdAt))
-      .limit(50)
+    try {
+      const trimmedStudentId = studentId.trim()
+      
+      const tickets = await db
+        .select()
+        .from(queueEntries)
+        .where(eq(queueEntries.studentId, trimmedStudentId))
+        .orderBy(desc(queueEntries.createdAt))
+        .limit(50)
+        .catch(err => {
+          console.error(`[${requestId}] Error fetching ticket history:`, err)
+          throw err
+        })
 
-    res.json({
-      tickets: tickets.map(t => ({
-        id: t.id,
-        queueNumber: t.queueNumber,
-        serviceType: t.serviceType,
-        status: t.status,
-        createdAt: t.createdAt,
-        servedAt: t.servedAt,
-      })),
-    })
+      res.json({
+        tickets: (tickets || []).map(t => ({
+          id: t.id,
+          queueNumber: t.queueNumber,
+          serviceType: t.serviceType,
+          status: t.status,
+          createdAt: t.createdAt,
+          servedAt: t.servedAt,
+        })),
+        requestId
+      })
+    } catch (dbError) {
+      console.error(`[${requestId}] Database query failed:`, dbError.message)
+      res.status(500).json({ 
+        error: 'Failed to fetch history',
+        tickets: [],
+        requestId
+      })
+    }
   } catch (error) {
-    console.error('Error fetching ticket history:', error)
-    res.status(500).json({ error: 'Failed to fetch history', tickets: [] })
+    console.error(`[${requestId}] Unhandled error in GET /api/ticketHistory:`, error.message)
+    res.status(500).json({ 
+      error: 'Failed to fetch history',
+      tickets: [],
+      requestId
+    })
   }
 })
 
 // POST /api/admin/serve - Admin actions (serve next, complete, cancel)
 app.post('/api/admin/serve', checkAuth, async (req, res) => {
+  const requestId = req.id
   try {
     if (!db) {
-      return res.status(503).json({ error: 'Database not ready' })
+      console.error(`[${requestId}] ❌ Database not initialized for POST /api/admin/serve`)
+      return res.status(503).json({ 
+        error: 'Database not ready',
+        requestId
+      })
     }
 
     const { serviceType, action, entryId } = req.body
+    
+    // Validate inputs
+    if (!serviceType || typeof serviceType !== 'string') {
+      return res.status(400).json({ 
+        error: 'Invalid service type',
+        requestId
+      })
+    }
+    
+    if (!action || typeof action !== 'string') {
+      return res.status(400).json({ 
+        error: 'Invalid action',
+        requestId
+      })
+    }
+    
+    const validActions = ['serve_next', 'complete', 'cancel']
+    if (!validActions.includes(action)) {
+      return res.status(400).json({ 
+        error: `Invalid action. Must be one of: ${validActions.join(', ')}`,
+        requestId
+      })
+    }
+    
+    if (action !== 'serve_next' && !entryId) {
+      return res.status(400).json({ 
+        error: 'Entry ID is required for this action',
+        requestId
+      })
+    }
 
-    if (action === 'serve_next') {
-      // Mark currently serving as served
-      await db
-        .update(queueEntries)
-        .set({ status: 'served', servedAt: new Date() })
-        .where(
-          and(
-            eq(queueEntries.serviceType, serviceType),
-            eq(queueEntries.status, 'serving'),
-          ),
-        )
+    console.log(`[${requestId}] 🔧 Admin action:`, { serviceType, action, entryId })
 
-      // Get next waiting
-      const waiting = await db
-        .select()
-        .from(queueEntries)
-        .where(
-          and(
-            eq(queueEntries.serviceType, serviceType),
-            eq(queueEntries.status, 'waiting'),
-          ),
-        )
-        .orderBy(asc(queueEntries.queueNumber))
-        .limit(1)
+    try {
+      if (action === 'serve_next') {
+        // Mark currently serving as served
+        await db
+          .update(queueEntries)
+          .set({ status: 'served', servedAt: new Date() })
+          .where(
+            and(
+              eq(queueEntries.serviceType, serviceType),
+              eq(queueEntries.status, 'serving'),
+            ),
+          )
+          .catch(err => {
+            console.error(`[${requestId}] Error updating serving entry:`, err)
+            throw err
+          })
 
-      if (waiting.length === 0) {
-        return res.json({ message: 'No more in queue' })
+        // Get next waiting
+        const waiting = await db
+          .select()
+          .from(queueEntries)
+          .where(
+            and(
+              eq(queueEntries.serviceType, serviceType),
+              eq(queueEntries.status, 'waiting'),
+            ),
+          )
+          .orderBy(asc(queueEntries.queueNumber))
+          .limit(1)
+          .catch(err => {
+            console.error(`[${requestId}] Error fetching waiting entries:`, err)
+            throw err
+          })
+
+        if (waiting.length === 0) {
+          console.log(`[${requestId}] ⏹️  No more entries in queue for service:`, serviceType)
+          return res.json({ 
+            message: 'No more in queue',
+            requestId
+          })
+        }
+
+        const updated = await db
+          .update(queueEntries)
+          .set({ status: 'serving' })
+          .where(eq(queueEntries.id, waiting[0].id))
+          .returning()
+          .catch(err => {
+            console.error(`[${requestId}] Error updating to serving:`, err)
+            throw err
+          })
+
+        console.log(`[${requestId}] ✅ Serving next ticket:`, updated[0])
+        res.json({
+          ...updated[0],
+          requestId
+        })
+      } else if (action === 'complete' && entryId) {
+        const updated = await db
+          .update(queueEntries)
+          .set({ status: 'served', servedAt: new Date() })
+          .where(eq(queueEntries.id, entryId))
+          .returning()
+          .catch(err => {
+            console.error(`[${requestId}] Error completing entry:`, err)
+            throw err
+          })
+
+        if (!updated || updated.length === 0) {
+          return res.status(404).json({ 
+            error: 'Entry not found',
+            requestId
+          })
+        }
+
+        console.log(`[${requestId}] ✅ Completed entry:`, updated[0])
+        res.json({
+          ...updated[0],
+          requestId
+        })
+      } else if (action === 'cancel' && entryId) {
+        const updated = await db
+          .update(queueEntries)
+          .set({ status: 'cancelled' })
+          .where(eq(queueEntries.id, entryId))
+          .returning()
+          .catch(err => {
+            console.error(`[${requestId}] Error cancelling entry:`, err)
+            throw err
+          })
+
+        if (!updated || updated.length === 0) {
+          return res.status(404).json({ 
+            error: 'Entry not found',
+            requestId
+          })
+        }
+
+        console.log(`[${requestId}] ❌ Cancelled entry:`, updated[0])
+        res.json({
+          ...updated[0],
+          requestId
+        })
+      } else {
+        console.warn(`[${requestId}] ⚠️  Invalid admin action:`, action)
+        res.status(400).json({ 
+          error: 'Invalid action',
+          requestId
+        })
       }
-
-      const updated = await db
-        .update(queueEntries)
-        .set({ status: 'serving' })
-        .where(eq(queueEntries.id, waiting[0].id))
-        .returning()
-
-      res.json(updated[0])
-    } else if (action === 'complete' && entryId) {
-      const updated = await db
-        .update(queueEntries)
-        .set({ status: 'served', servedAt: new Date() })
-        .where(eq(queueEntries.id, entryId))
-        .returning()
-
-      res.json(updated[0] || { error: 'Entry not found' })
-    } else if (action === 'cancel' && entryId) {
-      const updated = await db
-        .update(queueEntries)
-        .set({ status: 'cancelled' })
-        .where(eq(queueEntries.id, entryId))
-        .returning()
-
-      res.json(updated[0] || { error: 'Entry not found' })
-    } else {
-      res.status(400).json({ error: 'Invalid action' })
+    } catch (dbError) {
+      console.error(`[${requestId}] Database operation failed:`, dbError.message)
+      res.status(500).json({ 
+        error: 'Failed to complete admin action',
+        requestId
+      })
     }
   } catch (error) {
-    console.error('Error serving queue:', error)
-    res.status(500).json({ error: 'Internal server error' })
+    console.error(`[${requestId}] ❌ Unhandled error in POST /api/admin/serve:`, error.message)
+    console.error(`[${requestId}] 📋 Stack trace:`, error.stack)
+    res.status(500).json({ 
+      error: 'Internal server error',
+      requestId
+    })
   }
 })
 
 // GET /api/admin/report - Get all served entries
 app.get('/api/admin/report', checkAuth, async (req, res) => {
+  const requestId = req.id
   try {
     if (!db) {
-      return res.status(503).json({ error: 'Database not ready' })
+      return res.status(503).json({ 
+        error: 'Database not ready',
+        requestId
+      })
     }
 
-    const served = await db
-      .select()
-      .from(queueEntries)
-      .where(eq(queueEntries.status, 'served'))
-      .orderBy(desc(queueEntries.servedAt))
+    try {
+      const served = await db
+        .select()
+        .from(queueEntries)
+        .where(eq(queueEntries.status, 'served'))
+        .orderBy(desc(queueEntries.servedAt))
+        .catch(err => {
+          console.error(`[${requestId}] Error fetching report:`, err)
+          throw err
+        })
 
-    res.json(served)
+      res.json({
+        entries: served || [],
+        requestId
+      })
+    } catch (dbError) {
+      console.error(`[${requestId}] Database query failed:`, dbError.message)
+      res.status(500).json({ 
+        error: 'Failed to fetch report',
+        requestId
+      })
+    }
   } catch (error) {
-    console.error('Error fetching report:', error)
-    res.status(500).json({ error: 'Internal server error' })
+    console.error(`[${requestId}] Unhandled error in GET /api/admin/report:`, error.message)
+    res.status(500).json({ 
+      error: 'Internal server error',
+      requestId
+    })
   }
 })
 
