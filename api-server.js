@@ -441,12 +441,27 @@ app.get('/api/admin/report', checkAuth, async (req, res) => {
   }
 })
 
+// Health check can be used by both dev and production
+app.get('/health', (req, res) => {
+  res.json({ 
+    status: 'ok', 
+    timestamp: new Date().toISOString(), 
+    environment: NODE_ENV,
+    databaseConnected: !!db
+  })
+})
+
 // SPA fallback - serve index.html for all unknown routes (both dev and production)
 app.get('*', (req, res) => {
   if (NODE_ENV === 'production') {
     const indexPath = path.join(__dirname, 'dist', 'index.html')
     console.log(`📄 Serving SPA fallback to ${req.path} from dist`)
-    res.sendFile(indexPath)
+    res.sendFile(indexPath, (err) => {
+      if (err) {
+        console.error('Error serving index.html:', err)
+        res.status(500).json({ error: 'Failed to serve application' })
+      }
+    })
   } else {
     // In development, send 404 to avoid confusion (Vite handles client routing)
     res.status(404).json({ error: 'Not found. In development, Vite handles client routes.' })

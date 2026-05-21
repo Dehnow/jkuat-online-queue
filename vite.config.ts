@@ -10,7 +10,6 @@ export default defineConfig({
     tailwindcss(),
     react(),
     tanstackStart(),
-     viteReact(),
   ],
   base: '/',
   server: {
