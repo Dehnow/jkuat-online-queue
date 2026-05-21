@@ -61,6 +61,11 @@ const getHourlyServed = (entries: QueueEntry[]) => {
   return Object.entries(hourly).map(([hour, count]) => ({ hour: parseInt(hour), count })).sort((a, b) => a.hour - b.hour)
 }
 
+const getTodayServedEntries = (entries: QueueEntry[]) => {
+  const today = new Date().toDateString()
+  return entries.filter(entry => entry.servedAt && new Date(entry.servedAt).toDateString() === today)
+}
+
 export default function AdminPage() {
   const navigate = useNavigate()
   const [loggedIn, setLoggedIn] = useState(false)
@@ -173,7 +178,8 @@ export default function AdminPage() {
       try {
         const reportRes = await fetch('/api/admin/report', { headers: { Authorization: `Basic ${auth}` } })
         if (!reportRes.ok) throw new Error(`Report fetch failed: ${reportRes.status}`)
-        const servedEntries = await reportRes.json()
+        const reportJson = await reportRes.json()
+        const servedEntries = Array.isArray(reportJson.entries) ? reportJson.entries : []
         console.log(`[Admin] Served entries count: ${servedEntries.length}`)
         setReportData(servedEntries)
         setChartData(getHourlyServed(servedEntries))
@@ -310,7 +316,19 @@ export default function AdminPage() {
                     <div className="w-12 h-12 bg-green-100 rounded-full flex items-center justify-center"><Building2 className="w-6 h-6 text-green-600" /></div>
                     <div><p className="text-gray-600 text-sm">Registrar's Office</p><p className="text-4xl font-extrabold text-green-600">{serviceQueues.find(q => q.serviceId === 'registrar')?.waitingCount || 0}</p><p className="text-xs text-gray-400">people</p></div>
                   </div>
-                  <svg className="w-8 h-8 text-green-200" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z" /></svg>
+                  <div className="flex flex-col gap-2">
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation()
+                        navigate({ to: '/admin-report/registrar' })
+                      }}
+                      className="w-8 h-8 bg-green-100 hover:bg-green-200 rounded-full flex items-center justify-center transition"
+                      title="View Report"
+                    >
+                      <svg className="w-4 h-4 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" /></svg>
+                    </button>
+                    <svg className="w-8 h-8 text-green-200" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z" /></svg>
+                  </div>
                 </div>
               </div>
               <div
@@ -322,7 +340,19 @@ export default function AdminPage() {
                     <div className="w-12 h-12 bg-amber-100 rounded-full flex items-center justify-center"><Banknote className="w-6 h-6 text-amber-500" /></div>
                     <div><p className="text-gray-600 text-sm">Finance Office</p><p className="text-4xl font-extrabold text-amber-500">{serviceQueues.find(q => q.serviceId === 'finance')?.waitingCount || 0}</p><p className="text-xs text-gray-400">people</p></div>
                   </div>
-                  <svg className="w-8 h-8 text-amber-200" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M17 9V7a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2m2 4h10a2 2 0 002-2v-6a2 2 0 00-2-2H9a2 2 0 00-2 2v6a2 2 0 002 2zm7-5a2 2 0 11-4 0 2 2 0 014 0z" /></svg>
+                  <div className="flex flex-col gap-2">
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation()
+                        navigate({ to: '/admin-report/finance' })
+                      }}
+                      className="w-8 h-8 bg-amber-100 hover:bg-amber-200 rounded-full flex items-center justify-center transition"
+                      title="View Report"
+                    >
+                      <svg className="w-4 h-4 text-amber-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" /></svg>
+                    </button>
+                    <svg className="w-8 h-8 text-amber-200" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M17 9V7a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2m2 4h10a2 2 0 002-2v-6a2 2 0 00-2-2H9a2 2 0 00-2 2v6a2 2 0 002 2zm7-5a2 2 0 11-4 0 2 2 0 014 0z" /></svg>
+                  </div>
                 </div>
               </div>
               <div
@@ -334,7 +364,19 @@ export default function AdminPage() {
                     <div className="w-12 h-12 bg-blue-100 rounded-full flex items-center justify-center"><Headphones className="w-6 h-6 text-blue-500" /></div>
                     <div><p className="text-gray-600 text-sm">ICT Helpdesk</p><p className="text-4xl font-extrabold text-blue-500">{serviceQueues.find(q => q.serviceId === 'ict_helpdesk')?.waitingCount || 0}</p><p className="text-xs text-gray-400">people</p></div>
                   </div>
-                  <svg className="w-8 h-8 text-blue-200" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 3v2m6-2v2M9 19v2m6-2v2M5 3h14a2 2 0 012 2v14a2 2 0 01-2 2H5a2 2 0 01-2-2V5a2 2 0 012-2z" /></svg>
+                  <div className="flex flex-col gap-2">
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation()
+                        navigate({ to: '/admin-report/ict_helpdesk' })
+                      }}
+                      className="w-8 h-8 bg-blue-100 hover:bg-blue-200 rounded-full flex items-center justify-center transition"
+                      title="View Report"
+                    >
+                      <svg className="w-4 h-4 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" /></svg>
+                    </button>
+                    <svg className="w-8 h-8 text-blue-200" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 3v2m6-2v2M9 19v2m6-2v2M5 3h14a2 2 0 012 2v14a2 2 0 01-2 2H5a2 2 0 01-2-2V5a2 2 0 012-2z" /></svg>
+                  </div>
                 </div>
               </div>
               <div className="bg-white/90 backdrop-blur-sm rounded-2xl shadow-md p-5 flex flex-col">
@@ -435,7 +477,7 @@ export default function AdminPage() {
                 {/* Queue Statistics Graph */}
                 <div className="bg-white/90 backdrop-blur-sm rounded-3xl shadow-md p-6">
                   <div className="flex items-center justify-between mb-4">
-                    <div className="flex items-center gap-2"><svg className="w-6 h-6 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" /></svg><h3 className="text-lg font-bold text-gray-800">Queue Statistics (Today)</h3></div>
+                    <div className="flex items-center gap-2"><svg className="w-6 h-6 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" /></svg><h3 className="text-lg font-bold text-gray-800">Persons Served Today</h3></div>
                     <button className="text-gray-400 hover:text-gray-600">⋯</button>
                   </div>
                   <div className="h-64">
@@ -485,33 +527,98 @@ export default function AdminPage() {
         )}
 
         {activeTab === 'report' && (
-          <div className="bg-white/90 backdrop-blur-sm rounded-3xl shadow-md p-6">
-            <h2 className="text-2xl font-bold text-gray-800 mb-4">Service Report</h2>
-            <div className="overflow-x-auto">
-              <table className="w-full text-sm">
-                <thead className="bg-gray-50">
-                  <tr>
-                    <th className="p-2 text-left">Ref No</th>
-                    <th className="p-2 text-left">Queue No</th>
-                    <th className="p-2 text-left">Name</th>
-                    <th className="p-2 text-left">Student ID</th>
-                    <th className="p-2 text-left">Service</th>
-                    <th className="p-2 text-left">Served At</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {reportData.slice(0, 10).map(entry => (
-                    <tr key={entry.id} className="border-t">
-                      <td className="p-2 font-mono text-green-600">REF-{entry.id}</td>
-                      <td className="p-2 font-bold">#{entry.queueNumber}</td>
-                      <td className="p-2">{entry.name}</td>
-                      <td className="p-2">{entry.studentId}</td>
-                      <td className="p-2">{entry.serviceType}</td>
-                      <td className="p-2">{entry.servedAt ? new Date(entry.servedAt).toLocaleString() : '—'}</td>
+          <div className="space-y-8">
+            <div className="bg-white/90 backdrop-blur-sm rounded-3xl shadow-md p-6">
+              <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4 mb-6">
+                <div>
+                  <h2 className="text-2xl font-bold text-gray-800">Service Report</h2>
+                  <p className="text-sm text-gray-500 mt-1">Latest served queue entries and today&apos;s service log.</p>
+                </div>
+                <div className="flex flex-wrap gap-4">
+                  <div className="bg-green-50 border border-green-200 rounded-2xl px-4 py-3">
+                    <p className="text-xs uppercase text-gray-500">Total Served</p>
+                    <p className="text-2xl font-bold text-green-700">{reportData.length}</p>
+                  </div>
+                  <div className="bg-blue-50 border border-blue-200 rounded-2xl px-4 py-3">
+                    <p className="text-xs uppercase text-gray-500">Served Today</p>
+                    <p className="text-2xl font-bold text-blue-700">{getTodayServedEntries(reportData).length}</p>
+                  </div>
+                </div>
+              </div>
+              <div className="overflow-x-auto rounded-3xl border border-gray-100">
+                <table className="w-full text-sm bg-white">
+                  <thead className="bg-gray-50">
+                    <tr>
+                      <th className="p-3 text-left text-xs uppercase tracking-wide text-gray-500">Ref No</th>
+                      <th className="p-3 text-left text-xs uppercase tracking-wide text-gray-500">Queue No</th>
+                      <th className="p-3 text-left text-xs uppercase tracking-wide text-gray-500">Name</th>
+                      <th className="p-3 text-left text-xs uppercase tracking-wide text-gray-500">Student ID</th>
+                      <th className="p-3 text-left text-xs uppercase tracking-wide text-gray-500">Service</th>
+                      <th className="p-3 text-left text-xs uppercase tracking-wide text-gray-500">Served At</th>
                     </tr>
+                  </thead>
+                  <tbody>
+                    {reportData.slice(0, 10).map(entry => (
+                      <tr key={entry.id} className="border-t border-gray-100 hover:bg-gray-50">
+                        <td className="p-3 font-mono text-green-600">REF-{entry.id}</td>
+                        <td className="p-3 font-bold">#{entry.queueNumber}</td>
+                        <td className="p-3">{entry.name}</td>
+                        <td className="p-3">{entry.studentId}</td>
+                        <td className="p-3 capitalize">{entry.serviceType.replace('_', ' ')}</td>
+                        <td className="p-3">{entry.servedAt ? new Date(entry.servedAt).toLocaleString() : '—'}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+
+            <div className="bg-white/90 backdrop-blur-sm rounded-3xl shadow-md p-6">
+              <div className="flex items-center justify-between mb-4">
+                <div>
+                  <h3 className="text-xl font-bold text-gray-800">Today&apos;s Service Log</h3>
+                  <p className="text-sm text-gray-500">Form-style log for people served today.</p>
+                </div>
+                <span className="text-sm text-gray-500">{getTodayServedEntries(reportData).length} entries</span>
+              </div>
+              {getTodayServedEntries(reportData).length === 0 ? (
+                <div className="rounded-3xl border border-dashed border-gray-200 bg-gray-50 p-10 text-center text-gray-400">No service entries found for today.</div>
+              ) : (
+                <div className="grid gap-4">
+                  {getTodayServedEntries(reportData).map(entry => (
+                    <div key={entry.id} className="rounded-3xl border border-gray-200 bg-gray-50 p-5 shadow-sm">
+                      <div className="grid gap-4 md:grid-cols-2">
+                        <div>
+                          <label className="block text-xs font-semibold uppercase tracking-wide text-gray-500">Ticket</label>
+                          <p className="mt-1 text-lg font-semibold text-gray-800">#{entry.queueNumber}</p>
+                        </div>
+                        <div>
+                          <label className="block text-xs font-semibold uppercase tracking-wide text-gray-500">Service</label>
+                          <p className="mt-1 text-gray-700 capitalize">{entry.serviceType.replace('_', ' ')}</p>
+                        </div>
+                        <div>
+                          <label className="block text-xs font-semibold uppercase tracking-wide text-gray-500">Name</label>
+                          <p className="mt-1 text-gray-700">{entry.name}</p>
+                        </div>
+                        <div>
+                          <label className="block text-xs font-semibold uppercase tracking-wide text-gray-500">Student ID</label>
+                          <p className="mt-1 text-gray-700">{entry.studentId}</p>
+                        </div>
+                      </div>
+                      <div className="mt-4 grid gap-4 md:grid-cols-2">
+                        <div>
+                          <label className="block text-xs font-semibold uppercase tracking-wide text-gray-500">Served At</label>
+                          <p className="mt-1 text-gray-700">{entry.servedAt ? new Date(entry.servedAt).toLocaleString() : '—'}</p>
+                        </div>
+                        <div>
+                          <label className="block text-xs font-semibold uppercase tracking-wide text-gray-500">Record</label>
+                          <p className="mt-1 text-gray-700">ID {entry.id}</p>
+                        </div>
+                      </div>
+                    </div>
                   ))}
-                </tbody>
-              </table>
+                </div>
+              )}
             </div>
           </div>
         )}
