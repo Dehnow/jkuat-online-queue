@@ -3,6 +3,8 @@ import { useState, useEffect } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { Building2, Banknote, Headphones } from 'lucide-react'
 
+const ADMIN_DEFAULT_USERNAME = 'Admin0375'
+const ADMIN_DEFAULT_PASSWORD = 'group2sysdev'
 
 export default function LoginPage() {
   const navigate = useNavigate()
@@ -13,11 +15,16 @@ export default function LoginPage() {
   const [loading, setLoading] = useState(false)
   const [showQueueModal, setShowQueueModal] = useState(false)
 
-  // Clear fields when role changes (prevents browser autofill cross‑contamination)
+  // Clear or prefill fields when role changes (prevents browser autofill cross‑contamination)
   useEffect(() => {
-    setUsername('')
-    setPassword('')
     setError('')
+    if (role === 'staff') {
+      setUsername(ADMIN_DEFAULT_USERNAME)
+      setPassword(ADMIN_DEFAULT_PASSWORD)
+    } else {
+      setUsername('')
+      setPassword('')
+    }
   }, [role])
 
   // Student login (mock – accepts any non‑empty credentials)
@@ -239,6 +246,7 @@ export default function LoginPage() {
                     className="mt-1 w-full rounded-xl border-gray-300 p-3 text-lg focus:ring-green-500 focus:border-green-500"
                   />
                 </div>
+                <p className="text-sm text-gray-500">Default admin login: <strong>{ADMIN_DEFAULT_USERNAME}</strong> / <strong>{ADMIN_DEFAULT_PASSWORD}</strong></p>
                 {error && <div className="text-red-600 text-sm bg-red-50 p-2 rounded-lg">{error}</div>}
                 <button
                   type="submit"

@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { useQuery } from '@tanstack/react-query'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { Building2, Banknote, Headphones, CheckCircle2, Clock, XCircle } from 'lucide-react'
 
 
@@ -100,6 +100,7 @@ function StudentDashboard() {
   const [ticketHistory, setTicketHistory] = useState<StoredTicket[]>([])
   const [activeTicketCount, setActiveTicketCount] = useState(0)
   const [isRefreshing, setIsRefreshing] = useState(false)
+  const queryClient = useQueryClient()
 
   useEffect(() => {
     const storedId = sessionStorage.getItem('studentId')
@@ -207,10 +208,12 @@ function StudentDashboard() {
       }
       
       const newEntry = await res.json()
+      const studentIdForHistory = formData.studentId.trim()
+      sessionStorage.setItem('studentId', studentIdForHistory)
+      setStudentIdHeader(studentIdForHistory)
       setLastTicket(newEntry)
       addDeviceTicketId(newEntry.id)
       setActiveTicketCount(prev => prev + 1)
-      const studentIdForHistory = formData.studentId
       const refNum = getReferenceNumber(newEntry.id)
       const storedTicket: StoredTicket = {
         id: newEntry.id,
@@ -225,6 +228,9 @@ function StudentDashboard() {
       history.push(storedTicket)
       localStorage.setItem(historyKey, JSON.stringify(history))
       setTicketHistory(history)
+      queryClient.invalidateQueries({ queryKey: ['service-stats'] })
+      queryClient.invalidateQueries({ queryKey: ['live-queue-status'] })
+      queryClient.invalidateQueries({ predicate: query => Array.isArray(query.queryKey) && query.queryKey[0] === 'ticket-history' })
       setFormData({ phone: '', studentId: '', serviceType: 'registrar' })
       setShowTicketModal(true)
     } catch (err) {
