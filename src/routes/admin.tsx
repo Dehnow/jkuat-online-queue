@@ -1,5 +1,5 @@
 import { useNavigate } from '@tanstack/react-router'
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { Building2, Banknote, Headphones } from 'lucide-react'
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts'
 type QueueEntry = {
@@ -104,7 +104,7 @@ export default function AdminPage() {
   }, [navigate])
 
   // Fetch all data (queue stats and report)
-  const fetchAllData = async () => {
+  const fetchAllData = useCallback(async () => {
     if (!auth) {
       console.warn('[Admin] No auth token available, skipping data fetch')
       return
@@ -184,7 +184,7 @@ export default function AdminPage() {
     } catch (err) {
       console.error('[Admin] fetchAllData error:', err)
     }
-  }
+  }, [auth, selectedOffice])
 
   useEffect(() => {
     if (loggedIn) {
@@ -193,6 +193,19 @@ export default function AdminPage() {
       return () => clearInterval(interval)
     }
   }, [loggedIn, auth, selectedOffice])
+
+  // Listen for ticket creation events from other parts of the app and refresh immediately
+  useEffect(() => {
+    const handler = () => {
+      if (loggedIn) fetchAllData()
+    }
+    try {
+      window.addEventListener('ticketCreated', handler as EventListener)
+    } catch (e) {}
+    return () => {
+      try { window.removeEventListener('ticketCreated', handler as EventListener) } catch (e) {}
+    }
+  }, [loggedIn, fetchAllData])
 
   useEffect(() => {
     const timer = setInterval(() => setCurrentDateTime(new Date()), 1000)

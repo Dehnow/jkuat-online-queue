@@ -114,6 +114,62 @@ function StudentDashboard() {
     return () => clearInterval(interval)
   }, [])
 
+  // Listen for ticket creation events (same-window) and storage events (cross-tab)
+  useEffect(() => {
+    const onTicketCreated = (e: Event) => {
+      try {
+        const detail = (e as CustomEvent).detail
+        if (detail && detail.id) {
+          // Update last ticket and local history
+          setLastTicket(detail)
+          addDeviceTicketId(detail.id)
+          setActiveTicketCount(prev => prev + 1)
+          const student = detail.studentId || sessionStorage.getItem('studentId') || ''
+          if (student) {
+            const historyKey = `ticketHistory_${student}`
+            const existing = localStorage.getItem(historyKey)
+            const history = existing ? JSON.parse(existing) : []
+            const refNum = getReferenceNumber(detail.id)
+            const storedTicket: StoredTicket = {
+              id: detail.id,
+              queueNumber: detail.queueNumber,
+              serviceType: detail.serviceType,
+              createdAt: detail.createdAt,
+              referenceNumber: refNum
+            }
+            history.push(storedTicket)
+            localStorage.setItem(historyKey, JSON.stringify(history))
+            setTicketHistory(history)
+          }
+        }
+      } catch (err) {}
+    }
+
+    const onStorage = (ev: StorageEvent) => {
+      try {
+        if (ev.key && ev.key.startsWith('ticketHistory_')) {
+          const student = sessionStorage.getItem('studentId')
+          if (!student) return
+          const historyKey = `ticketHistory_${student}`
+          const data = localStorage.getItem(historyKey)
+          setTicketHistory(data ? JSON.parse(data) : [])
+        }
+      } catch (err) {}
+    }
+
+    try {
+      window.addEventListener('ticketCreated', onTicketCreated as EventListener)
+      window.addEventListener('storage', onStorage)
+    } catch (e) {}
+
+    return () => {
+      try {
+        window.removeEventListener('ticketCreated', onTicketCreated as EventListener)
+        window.removeEventListener('storage', onStorage)
+      } catch (e) {}
+    }
+  }, [])
+
   // Auto-close ticket modal after 10 seconds
   useEffect(() => {
     if (showTicketModal) {
@@ -233,6 +289,12 @@ function StudentDashboard() {
       queryClient.invalidateQueries({ predicate: query => Array.isArray(query.queryKey) && query.queryKey[0] === 'ticket-history' })
       setFormData({ phone: '', studentId: '', serviceType: 'registrar' })
       setShowTicketModal(true)
+      // Notify other parts of the app (Admin, dashboards) that a new ticket was created
+      try {
+        if (typeof window !== 'undefined') {
+          window.dispatchEvent(new CustomEvent('ticketCreated', { detail: newEntry }))
+        }
+      } catch (e) {}
     } catch (err) {
       console.error('Error creating ticket:', err)
       setLimitError('Network error - please try again')
