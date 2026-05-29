@@ -497,9 +497,11 @@ app.get('/api/ticketHistory', async (req, res) => {
 app.get('/api/staff/auth', async (req, res) => {
   try {
     if (!db) {
+      console.log('Database not ready for GET /api/staff/auth')
       return res.status(503).json({ error: 'Database not ready' })
     }
 
+    console.log('Fetching offices list...')
     const officesList = await db.select({
       id: offices.id,
       name: offices.name,
@@ -510,10 +512,14 @@ app.get('/api/staff/auth', async (req, res) => {
       createdAt: offices.createdAt,
       createdBy: offices.createdBy,
     }).from(offices)
+    console.log('Successfully fetched offices:', officesList.length, 'offices')
     res.json({ offices: officesList })
   } catch (error) {
-    console.error('Error fetching staff offices:', error)
-    res.status(500).json({ error: 'Failed to fetch offices' })
+    console.error('ERROR fetching staff offices:')
+    console.error('  Message:', error.message)
+    console.error('  Code:', error.code)
+    console.error('  Stack:', error.stack)
+    res.status(500).json({ error: 'Failed to fetch offices', details: error.message })
   }
 })
 
@@ -572,8 +578,11 @@ app.post('/api/staff/auth', async (req, res) => {
       office,
     })
   } catch (error) {
-    console.error('Error authenticating staff:', error)
-    res.status(500).json({ error: 'Authentication failed' })
+    console.error('ERROR authenticating staff:')
+    console.error('  Message:', error.message)
+    console.error('  Code:', error.code)
+    console.error('  Stack:', error.stack)
+    res.status(500).json({ error: 'Authentication failed', details: error.message })
   }
 })
 
@@ -630,8 +639,12 @@ app.get('/api/staff/queue/:officeId', async (req, res) => {
       },
     })
   } catch (error) {
-    console.error('Error fetching staff queue:', error)
-    res.status(500).json({ error: 'Failed to fetch staff queue' })
+    const officeId = req.params.officeId
+    console.error('ERROR fetching staff queue for officeId', officeId, ':')
+    console.error('  Message:', error.message)
+    console.error('  Code:', error.code)
+    console.error('  Stack:', error.stack)
+    res.status(500).json({ error: 'Failed to fetch staff queue', details: error.message })
   }
 })
 
@@ -712,8 +725,11 @@ app.post('/api/staff/queue-action', async (req, res) => {
 
     res.status(400).json({ error: 'Invalid action' })
   } catch (error) {
-    console.error('Error handling staff queue action:', error)
-    res.status(500).json({ error: 'Failed to perform queue action' })
+    console.error('ERROR handling staff queue action:')
+    console.error('  Message:', error.message)
+    console.error('  Code:', error.code)
+    console.error('  Stack:', error.stack)
+    res.status(500).json({ error: 'Failed to perform queue action', details: error.message })
   }
 })
 
@@ -822,8 +838,10 @@ app.post('/api/admin/serve', checkAuth, async (req, res) => {
       res.status(400).json({ error: 'Invalid action' })
     }
   } catch (error) {
-    console.error('âŒ Error serving queue:', error.message)
-    console.error('ðŸ“‹ Stack trace:', error.stack)
+    console.error('ERROR in queue action (', action, '):')
+    console.error('  Message:', error.message)
+    console.error('  Code:', error.code)
+    console.error('  Stack:', error.stack)
     res.status(500).json({ error: 'Internal server error', details: error.message })
   }
 })
@@ -852,8 +870,11 @@ app.get('/api/admin/report', checkAuth, async (req, res) => {
 
     res.json(served)
   } catch (error) {
-    console.error('Error fetching report:', error)
-    res.status(500).json({ error: 'Internal server error' })
+    console.error('ERROR fetching admin report:')
+    console.error('  Message:', error.message)
+    console.error('  Code:', error.code)
+    console.error('  Stack:', error.stack)
+    res.status(500).json({ error: 'Internal server error', details: error.message })
   }
 })
 
