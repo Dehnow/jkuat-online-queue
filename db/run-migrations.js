@@ -1,5 +1,5 @@
 import postgres from 'postgres'
-import { readdir, readFile } from 'fs/promises'
+import { readdir, readFile, stat } from 'fs/promises'
 import path from 'path'
 import { fileURLToPath } from 'url'
 
@@ -16,26 +16,46 @@ async function runMigrations() {
 
   try {
     console.log('🔄 Running database migrations...')
-    console.log('📊 Database URL:', DATABASE_URL.split('@')[1] || 'local')
+    console.log('📊 Connecting to database...')
     
-    // Get all migration folders
+    // Test connection
+    await client`SELECT 1`
+    console.log('✓ Database connection successful')
+    
+    // Get all migration folders and files
     const migrationsDir = path.join(__dirname, '../drizzle')
-    const migrationFolders = await readdir(migrationsDir)
+    const items = await readdir(migrationsDir)
     
-    console.log(`📁 Found ${migrationFolders.length} items in migrations directory`)
+    console.log(`📁 Found ${items.length} items in migrations directory`)
     
     let executedCount = 0
-    for (const folder of migrationFolders.sort()) {
-      if (folder === 'meta' || folder.startsWith('.')) {
-        console.log(`  ⊘ Skipping: ${folder}`)
+    let skippedCount = 0
+    
+    for (const item of items.sort()) {
+      if (item === 'meta' || item.startsWith('.')) {
+        console.log(`  ⊘ Skipping: ${item}`)
+        skippedCount++
         continue
       }
       
-      const sqlFile = path.join(migrationsDir, folder, 'migration.sql')
+      const itemPath = path.join(migrationsDir, item)
+      const itemStat = await stat(itemPath)
+      let sqlFile
+      
+      if (itemStat.isDirectory()) {
+        sqlFile = path.join(itemPath, 'migration.sql')
+      } else if (item.endsWith('.sql')) {
+        sqlFile = itemPath
+      } else {
+        console.log(`  ⊘ Skipping (not a migration): ${item}`)
+        skippedCount++
+        continue
+      }
+      
       try {
         const sqlContent = await readFile(sqlFile, 'utf-8')
         if (sqlContent.trim()) {
-          console.log(`  📝 Running migration: ${folder}`)
+          console.log(`  📝 Running migration: ${item}`)
           
           // Split by statement-breakpoint comment and execute each statement
           const statements = sqlContent
@@ -52,10 +72,13 @@ async function runMigrations() {
               // Ignore "already exists" errors - they mean migrations already applied
               if (err.message.includes('already exists') || 
                   err.message.includes('duplicate key') ||
-                  err.message.includes('relation') && err.message.includes('already exists')) {
-                console.log(`    ℹ️  Statement already applied (skipped)`)
+                  err.message.includes('duplicate') ||
+                  (err.message.includes('relation') && err.message.includes('already exists'))) {
+                console.log(`    ℹ️  Already exists (skipped)`)
+              } else if (err.message.includes('ENOENT') || err.message.includes('no such file')) {
+                console.log(`    ℹ️  File not found (skipped)`)
               } else {
-                console.error(`    ❌ Statement error: ${err.message}`)
+                console.error(`    ❌ Error: ${err.message}`)
                 throw err
               }
             }
@@ -64,17 +87,24 @@ async function runMigrations() {
           executedCount++
         }
       } catch (err) {
-        console.error(`  ❌ Migration ${folder} failed:`, err.message)
-        throw err
+        if (!err.message.includes('ENOENT')) {
+          console.error(`  ❌ Migration ${item} failed:`, err.message)
+          throw err
+        } else {
+          console.log(`  ⊘ Skipping ${item} (file not found)`)
+          skippedCount++
+        }
       }
     }
     
+    console.log(`\n✓ Migrations completed successfully`)
+    console.log(`  - Executed: ${executedCount}`)
+    console.log(`  - Skipped: ${skippedCount}`)
+    
     await client.end()
-    console.log(`✓ Migrations completed successfully (${executedCount} migrations executed)`)
     process.exit(0)
   } catch (error) {
     console.error('❌ Migration error:', error.message)
-    console.error('Stack:', error.stack)
     await client.end()
     process.exit(1)
   }

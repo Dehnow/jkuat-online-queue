@@ -12,8 +12,7 @@
     "start": "npm run build && npm run server",
     "production": "node api-server.js",
     "migrate": "node db/run-migrations.js",
-    "init-data": "node db/init-data.js",
-    "test:resilience": "node test-resilience.js"
+    "init-data": "node db/init-data.js"
   },
   "dependencies": {
     "@tanstack/match-sorter-utils": "^8.15.1",

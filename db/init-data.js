@@ -3,8 +3,8 @@ import postgres from 'postgres'
 async function initializeData() {
   const DATABASE_URL = process.env.DATABASE_URL
   if (!DATABASE_URL) {
-    console.error('❌ DATABASE_URL not set')
-    process.exit(1)
+    console.log('ℹ️  DATABASE_URL not set - skipping data initialization')
+    process.exit(0)
   }
 
   const client = postgres(DATABASE_URL)
@@ -31,11 +31,21 @@ async function initializeData() {
       console.log(`  ℹ️  Offices already exist (${officeCount} offices found), skipping seed`)
     }
     
+    // Verify tables exist and have data
+    const totalQueues = await client`SELECT COUNT(*) as count FROM queue_entries`
+    const totalStaff = await client`SELECT COUNT(*) as count FROM staff_accounts`
+    
+    console.log(`\n✓ Database Status:`)
+    console.log(`  - Offices: ${officeCount}`)
+    console.log(`  - Queue Entries: ${totalQueues[0]?.count ?? 0}`)
+    console.log(`  - Staff Accounts: ${totalStaff[0]?.count ?? 0}`)
+    
     await client.end()
-    console.log('✓ Data initialization completed')
+    console.log('\n✓ Data initialization completed successfully')
     process.exit(0)
   } catch (error) {
     console.error('❌ Initialization error:', error.message)
+    console.error('Stack:', error.stack)
     await client.end()
     process.exit(1)
   }

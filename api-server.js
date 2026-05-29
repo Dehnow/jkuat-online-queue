@@ -903,6 +903,76 @@ app.get('/api/debug', (req, res) => {
   })
 })
 
+// GET /api/db-status - Comprehensive database diagnostics
+app.get('/api/db-status', async (req, res) => {
+  try {
+    if (!db) {
+      return res.status(503).json({ 
+        status: 'error',
+        message: 'Database not connected',
+        dbConnected: false
+      })
+    }
+
+    const status = {
+      dbConnected: true,
+      tables: {},
+      timestamp: new Date().toISOString(),
+      environment: NODE_ENV
+    }
+
+    // Check each table
+    try {
+      const officesCount = await db.select({ count: sql`count(*)::int` }).from(offices)
+      status.tables.offices = {
+        exists: true,
+        count: officesCount[0]?.count ?? 0,
+        sample: null
+      }
+      if ((officesCount[0]?.count ?? 0) > 0) {
+        const sample = await db.select({
+          id: offices.id,
+          name: offices.name,
+          serviceType: offices.serviceType,
+        }).from(offices).limit(1)
+        status.tables.offices.sample = sample[0] || null
+      }
+    } catch (err) {
+      status.tables.offices = { exists: false, error: err.message }
+    }
+
+    try {
+      const queueCount = await db.select({ count: sql`count(*)::int` }).from(queueEntries)
+      status.tables.queueEntries = {
+        exists: true,
+        count: queueCount[0]?.count ?? 0
+      }
+    } catch (err) {
+      status.tables.queueEntries = { exists: false, error: err.message }
+    }
+
+    try {
+      const staffCount = await db.select({ count: sql`count(*)::int` }).from(staffAccounts)
+      status.tables.staffAccounts = {
+        exists: true,
+        count: staffCount[0]?.count ?? 0
+      }
+    } catch (err) {
+      status.tables.staffAccounts = { exists: false, error: err.message }
+    }
+
+    res.json(status)
+  } catch (error) {
+    console.error('ERROR checking database status:')
+    console.error('  Message:', error.message)
+    console.error('  Stack:', error.stack)
+    res.status(500).json({ 
+      error: 'Database status check failed',
+      details: error.message
+    })
+  }
+})
+
 // SPA fallback - serve index.html for all unknown routes (both dev and production)
 app.get('*', (req, res) => {
   if (NODE_ENV === 'production') {
