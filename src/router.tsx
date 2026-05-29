@@ -1,25 +1,19 @@
-import { createRouter, RootRoute, Route, Navigate } from '@tanstack/react-router'
+import { createRouter, RootRoute, Route } from '@tanstack/react-router'
 import RootLayout from './routes/__root'
 import StudentDashboard from './routes/index'
 import AdminPage from './routes/admin'
+import StaffDashboard from './routes/staff-dashboard'
 import LoginPage from './routes/login'
 import TrackPage from './routes/track.$id'
-import AdminServiceReportPage from './routes/admin-report.$service'
 
 const rootRoute = new RootRoute({
   component: RootLayout,
 })
 
-// Login page (landing page)
+// Student dashboard (home page)
 const indexRoute = new Route({
   getParentRoute: () => rootRoute,
   path: '/',
-  component: LoginPage,
-})
-
-const dashboardRoute = new Route({
-  getParentRoute: () => rootRoute,
-  path: '/dashboard',
   component: StudentDashboard,
 })
 
@@ -27,6 +21,12 @@ const adminRoute = new Route({
   getParentRoute: () => rootRoute,
   path: '/admin',
   component: AdminPage,
+})
+
+const staffRoute = new Route({
+  getParentRoute: () => rootRoute,
+  path: '/staff-dashboard',
+  component: StaffDashboard,
 })
 
 const loginRoute = new Route({
@@ -41,19 +41,12 @@ const trackRoute = new Route({
   component: TrackPage,
 })
 
-const adminServiceReportRoute = new Route({
-  getParentRoute: () => rootRoute,
-  path: '/admin-report/$service',
-  component: AdminServiceReportPage,
-})
-
 const routeTree = rootRoute.addChildren([
   indexRoute,
-  dashboardRoute,
+  staffRoute,
   adminRoute,
   loginRoute,
   trackRoute,
-  adminServiceReportRoute,
 ])
 
 export const router = createRouter({ routeTree })

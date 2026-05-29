@@ -11,6 +11,7 @@ type QueueEntry = {
   queueNumber: number
   status: string
   createdAt: string
+  servedAt?: string
 }
 
 type StoredTicket = {
@@ -99,6 +100,38 @@ const getReferenceNumber = (ticket: number | { id: number; serviceType?: string;
   return `${serviceCode}${day}${month}${year}-${ticketObj.id}`
 }
 
+const dedupeStoredTickets = (tickets: StoredTicket[]) => {
+  const seen = new Set<number>()
+  return tickets.filter(ticket => {
+    if (seen.has(ticket.id)) return false
+    seen.add(ticket.id)
+    return true
+  })
+}
+
+const mergeTicketHistory = (localTickets: StoredTicket[], dbTickets: QueueEntry[]) => {
+  const merged = new Map<number, StoredTicket>()
+
+  localTickets.forEach(ticket => {
+    merged.set(ticket.id, ticket)
+  })
+
+  dbTickets.forEach(ticket => {
+    const existing = merged.get(ticket.id)
+    merged.set(ticket.id, {
+      id: ticket.id,
+      queueNumber: ticket.queueNumber,
+      serviceType: ticket.serviceType,
+      createdAt: ticket.createdAt,
+      status: ticket.status,
+      servedAt: ticket.servedAt,
+      referenceNumber: existing?.referenceNumber || getReferenceNumber({ id: ticket.id, serviceType: ticket.serviceType, createdAt: ticket.createdAt }),
+    })
+  })
+
+  return Array.from(merged.values()).sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
+}
+
 const getStatusBadge = (status: string) => {
   switch(status) {
     case 'served':
@@ -130,8 +163,9 @@ function StudentDashboard() {
     const storedId = sessionStorage.getItem('studentId')
     if (storedId) {
       setStudentIdHeader(storedId)
-      const history = localStorage.getItem(`ticketHistory_${storedId}`)
-      setTicketHistory(history ? JSON.parse(history) : [])
+      const historyKey = `ticketHistory_${storedId}`
+      const history = localStorage.getItem(historyKey)
+      setTicketHistory(history ? dedupeStoredTickets(JSON.parse(history)) : [])
     }
     refreshActiveTickets().then(setActiveTicketCount)
     const interval = setInterval(() => refreshActiveTickets().then(setActiveTicketCount), 30000)
@@ -161,9 +195,9 @@ function StudentDashboard() {
               createdAt: detail.createdAt,
               referenceNumber: refNum
             }
-            history.push(storedTicket)
-            localStorage.setItem(historyKey, JSON.stringify(history))
-            setTicketHistory(history)
+            const merged = dedupeStoredTickets([...history, storedTicket])
+            localStorage.setItem(historyKey, JSON.stringify(merged))
+            setTicketHistory(merged)
           }
         }
       } catch (err) {}
@@ -176,7 +210,7 @@ function StudentDashboard() {
           if (!student) return
           const historyKey = `ticketHistory_${student}`
           const data = localStorage.getItem(historyKey)
-          setTicketHistory(data ? JSON.parse(data) : [])
+          setTicketHistory(data ? dedupeStoredTickets(JSON.parse(data)) : [])
         }
       } catch (err) {}
     }
@@ -264,6 +298,8 @@ function StudentDashboard() {
     refetchInterval: 60000,
   })
 
+  const combinedHistory = mergeTicketHistory(ticketHistory, dbHistoryData.tickets || [])
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     setLimitError('')
@@ -309,9 +345,9 @@ function StudentDashboard() {
       const historyKey = `ticketHistory_${studentIdForHistory}`
       const existing = localStorage.getItem(historyKey)
       const history = existing ? JSON.parse(existing) : []
-      history.push(storedTicket)
-      localStorage.setItem(historyKey, JSON.stringify(history))
-      setTicketHistory(history)
+      const merged = dedupeStoredTickets([...history, storedTicket])
+      localStorage.setItem(historyKey, JSON.stringify(merged))
+      setTicketHistory(merged)
       queryClient.invalidateQueries({ queryKey: ['service-stats'] })
       queryClient.invalidateQueries({ predicate: query => Array.isArray(query.queryKey) && query.queryKey[0] === 'ticket-history' })
       setFormData({ phone: '', studentId: '', serviceType: 'registrar' })
@@ -524,12 +560,6 @@ function StudentDashboard() {
                         </div>
                         <div>
                           <div className="flex justify-between items-center mb-1">
-                            <span className="text-xs text-gray-600">Active (Serving + Waiting)</span>
-                            <span className="text-lg font-bold text-gray-800">{s.activeCount}</span>
-                          </div>
-                          <div className="h-1" />
-                        
-                          <div className="flex justify-between items-center mb-1">
                             <span className="text-xs text-gray-600">Waiting</span>
                             <span className="text-lg font-bold text-orange-500">{s.waitingCount}</span>
                           </div>
@@ -593,11 +623,11 @@ function StudentDashboard() {
                   <h2 className="text-2xl font-bold text-gray-800">Your Ticket History</h2>
                 </div>
                 <span className="bg-gradient-to-r from-green-100 to-green-50 text-green-700 text-xs font-bold px-3 py-1 rounded-full border border-green-200">
-                  {(dbHistoryData.tickets?.length ?? 0) + ticketHistory.length} tickets
+                  {combinedHistory.length} tickets
                 </span>
               </div>
 
-              {isLoadingHistory && ticketHistory.length === 0 ? (
+              {isLoadingHistory && combinedHistory.length === 0 ? (
                 <div className="flex justify-center py-8">
                   <div className="animate-spin rounded-full h-10 w-10 border-b-2 border-green-600"></div>
                 </div>
@@ -610,12 +640,7 @@ function StudentDashboard() {
               ) : (
                 <div className="space-y-3 max-h-96 overflow-y-auto">
                   {/* Combine and deduplicate: database tickets + localStorage tickets */}
-                  {[
-                    ...(dbHistoryData.tickets || []),
-                    ...ticketHistory.filter(t => !dbHistoryData.tickets.some((dt: QueueEntry) => dt.id === t.id))
-                  ]
-                    .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
-                    .map(t => {
+                  {combinedHistory.map(t => {
                       const statusInfo = getStatusBadge(t.status || 'waiting')
                       const StatusIcon = statusInfo.icon
                       return (

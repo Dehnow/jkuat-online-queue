@@ -28,7 +28,7 @@ export default function OfficeManagement({ offices, onCreateOffice, onDeleteOffi
   const [wizardStep, setWizardStep] = useState<1 | 2 | 3 | 4>(1)
   const [formData, setFormData] = useState({
     name: '',
-    serviceType: 'registrar',
+    serviceType: '',
     username: '',
     password: '',
     confirmPassword: '',
@@ -76,7 +76,7 @@ export default function OfficeManagement({ offices, onCreateOffice, onDeleteOffi
 
       if (res.ok) {
         await onCreateOffice(formData)
-        setFormData({ name: '', serviceType: 'registrar', username: '', password: '', confirmPassword: '' })
+        setFormData({ name: '', serviceType: '', username: '', password: '', confirmPassword: '' })
         setWizardStep(1)
         setShowWizard(false)
       } else {
@@ -147,7 +147,7 @@ export default function OfficeManagement({ offices, onCreateOffice, onDeleteOffi
             <div className="flex items-start justify-between mb-4">
               <div>
                 <h3 className="text-lg font-bold text-gray-800">{office.name}</h3>
-                <p className="text-sm text-gray-600">{serviceOptions.find(s => s.value === office.serviceType)?.label}</p>
+                <p className="text-sm text-gray-600">Service: {office.serviceType}</p>
               </div>
               <div className={`px-3 py-1 rounded-full text-xs font-semibold ${office.status === 'open' ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}>
                 {office.status.toUpperCase()}
@@ -234,25 +234,18 @@ export default function OfficeManagement({ offices, onCreateOffice, onDeleteOffi
               {/* Step 2: Service Type */}
               {wizardStep === 2 && (
                 <div className="space-y-4">
-                  <h4 className="text-lg font-semibold text-gray-800">Step 2: Service Station</h4>
+                  <h4 className="text-lg font-semibold text-gray-800">Step 2: Service Area</h4>
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-3">Select Service Type</label>
-                    <div className="grid grid-cols-1 gap-3">
-                      {serviceOptions.map((option) => (
-                        <button
-                          key={option.value}
-                          type="button"
-                          onClick={() => setFormData({ ...formData, serviceType: option.value })}
-                          className={`p-4 rounded-lg border-2 text-left font-semibold transition-all ${
-                            formData.serviceType === option.value
-                              ? 'border-blue-600 bg-blue-50 text-blue-700'
-                              : 'border-gray-300 bg-white text-gray-700 hover:border-gray-400'
-                          }`}
-                        >
-                          {option.label}
-                        </button>
-                      ))}
-                    </div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">Service Area / Designation</label>
+                    <input
+                      type="text"
+                      required
+                      value={formData.serviceType}
+                      onChange={(e) => setFormData({ ...formData, serviceType: e.target.value })}
+                      placeholder="e.g., Registrar Office, Finance Department, ICT Support"
+                      className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+                    />
+                    <p className="text-xs text-gray-500 mt-2">Enter the specific service area or department name for this office</p>
                   </div>
                 </div>
               )}

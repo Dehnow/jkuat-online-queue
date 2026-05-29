@@ -3,36 +3,63 @@ import { useState, useEffect } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { Building2, Banknote, Headphones } from 'lucide-react'
 
-const ADMIN_DEFAULT_USERNAME = 'Admin0375'
-const ADMIN_DEFAULT_PASSWORD = 'group2sysdev'
 
 export default function LoginPage() {
   const navigate = useNavigate()
   const [role, setRole] = useState<'student' | 'staff' | 'admin'>('student')
-  const [username, setUsername] = useState('')
-  const [password, setPassword] = useState('')
+  const [studentUsername, setStudentUsername] = useState('')
+  const [studentPassword, setStudentPassword] = useState('')
+  const [adminUsername, setAdminUsername] = useState('')
+  const [adminPassword, setAdminPassword] = useState('')
+  const [staffUsername, setStaffUsername] = useState('')
+  const [staffPassword, setStaffPassword] = useState('')
+  const [officeDialogOpen, setOfficeDialogOpen] = useState(false)
+  const [officeLoading, setOfficeLoading] = useState(false)
+  const [officeLoadError, setOfficeLoadError] = useState('')
+  const [offices, setOffices] = useState<any[]>([])
+  const [selectedOffice, setSelectedOffice] = useState<any | null>(null)
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
   const [showQueueModal, setShowQueueModal] = useState(false)
-  const [showStaffOfficeModal, setShowStaffOfficeModal] = useState(false)
-  const [offices, setOffices] = useState<any[]>([])
-  const [selectedOffice, setSelectedOffice] = useState<any>(null)
-  const [staffStep, setStaffStep] = useState<'select-office' | 'login'>('select-office')
 
-  // Clear fields when role changes (prevents browser autofill cross‑contamination)
+  const fetchOperativeOffices = async () => {
+    setOfficeLoading(true)
+    setOfficeLoadError('')
+    try {
+      const res = await fetch('/api/staff/auth')
+      if (!res.ok) {
+        throw new Error(`HTTP ${res.status}`)
+      }
+      const data = await res.json()
+      setOffices(data.offices || [])
+    } catch (err) {
+      console.error('[Login] fetchOffices', err)
+      setOfficeLoadError('Failed to load operational offices. Please try again.')
+    } finally {
+      setOfficeLoading(false)
+    }
+  }
+
   useEffect(() => {
     setError('')
-    setUsername('')
-    setPassword('')
-    setSelectedOffice(null)
-    setStaffStep('select-office')
-    
-    // Fetch offices for staff login
+    if (role === 'student') {
+      setStudentUsername('')
+      setStudentPassword('')
+      setOfficeDialogOpen(false)
+      setSelectedOffice(null)
+    }
+    if (role === 'admin') {
+      setAdminUsername('')
+      setAdminPassword('')
+      setOfficeDialogOpen(false)
+      setSelectedOffice(null)
+    }
     if (role === 'staff') {
-      fetch('/api/staff/auth')
-        .then(res => res.json())
-        .then(data => setOffices(data.offices || []))
-        .catch(err => console.error('Failed to fetch offices:', err))
+      setStaffUsername('')
+      setStaffPassword('')
+      setSelectedOffice(null)
+      setOfficeDialogOpen(true)
+      fetchOperativeOffices()
     }
   }, [role])
 
@@ -41,74 +68,22 @@ export default function LoginPage() {
     e.preventDefault()
     setLoading(true)
     setError('')
-    if (username.trim() === '' || password.trim() === '') {
+    if (studentUsername.trim() === '' || studentPassword.trim() === '') {
       setError('Please enter both username and password')
       setLoading(false)
       return
     }
-    sessionStorage.setItem('studentId', username.trim())
-    sessionStorage.setItem('studentAuth', btoa(`${username}:${password}`))
+    sessionStorage.setItem('studentId', studentUsername.trim())
+    sessionStorage.setItem('studentAuth', btoa(`${studentUsername}:${studentPassword}`))
     sessionStorage.setItem('userRole', 'student')
-    navigate({ to: '/dashboard' })
+    navigate({ to: '/' })
   }
 
-  // Staff login with office selection
-  const handleStaffOfficeSelection = (office: any) => {
-    setSelectedOffice(office)
-    setStaffStep('login')
-    setUsername('')
-    setPassword('')
-    setError('')
-  }
-
-  // Proceed with staff login after office selection
-  const handleStaffLogin = async (e: React.FormEvent) => {
-    e.preventDefault()
-    setLoading(true)
-    setError('')
-    
-    if (!username.trim() || !password.trim()) {
-      setError('Please enter both username and password')
-      setLoading(false)
-      return
-    }
-
-    try {
-      const res = await fetch('/api/staff/auth', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          username: username.trim(),
-          password: password.trim(),
-          officeId: selectedOffice.id,
-        }),
-      })
-
-      const data = await res.json()
-
-      if (res.ok) {
-        sessionStorage.setItem('staffAuth', btoa(`${username}:${password}`))
-        sessionStorage.setItem('officeId', selectedOffice.id.toString())
-        sessionStorage.setItem('officeName', selectedOffice.name)
-        sessionStorage.setItem('userRole', 'staff')
-        navigate({ to: '/staff-dashboard' })
-      } else {
-        setError(data.error || 'Invalid credentials')
-      }
-    } catch (err) {
-      setError('Network error – try again')
-      console.error('[Staff Login] Error:', err)
-    } finally {
-      setLoading(false)
-    }
-  }
-
-  // Admin login (original flow)
   const handleAdminLogin = async (e: React.FormEvent) => {
     e.preventDefault()
     setLoading(true)
     setError('')
-    const auth = btoa(`${username}:${password}`)
+    const auth = btoa(`${adminUsername}:${adminPassword}`)
     try {
       const res = await fetch('/api/admin/report', {
         headers: { Authorization: `Basic ${auth}` }
@@ -120,7 +95,45 @@ export default function LoginPage() {
       } else {
         setError('Invalid username or password')
       }
-    } catch {
+    } catch (err) {
+      console.error(err)
+      setError('Network error – try again')
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  const handleStaffLogin = async (e: React.FormEvent) => {
+    e.preventDefault()
+    if (!selectedOffice) {
+      setError('Please choose an operational office first')
+      return
+    }
+    setLoading(true)
+    setError('')
+    try {
+      const res = await fetch('/api/staff/auth', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          officeId: selectedOffice.id,
+          username: staffUsername,
+          password: staffPassword,
+        }),
+      })
+
+      if (!res.ok) {
+        const data = await res.json()
+        setError(data?.error || 'Invalid username or password')
+      } else {
+        sessionStorage.setItem('staffAuth', btoa(`${staffUsername}:${staffPassword}`))
+        sessionStorage.setItem('userRole', 'staff')
+        sessionStorage.setItem('officeId', String(selectedOffice.id))
+        sessionStorage.setItem('officeName', selectedOffice.name)
+        navigate({ to: '/staff-dashboard' })
+      }
+    } catch (err) {
+      console.error(err)
       setError('Network error – try again')
     } finally {
       setLoading(false)
@@ -181,6 +194,8 @@ export default function LoginPage() {
     gcTime: 5 * 60 * 1000,
   })
 
+  const operationalOffices = offices.filter((office) => office.status === 'open')
+
   return (
     <div className="min-h-screen w-full flex font-['Inter',system-ui] bg-gradient-to-br from-gray-50 to-gray-100 relative overflow-hidden">
       {/* Abstract decorative shapes */}
@@ -236,11 +251,11 @@ export default function LoginPage() {
               <button onClick={() => setRole('student')} className={`flex-1 h-16 rounded-xl font-semibold text-lg transition-all flex items-center justify-center gap-2 ${role === 'student' ? 'bg-green-600 text-white shadow-md' : 'bg-gray-100 border border-gray-300 text-gray-700 hover:bg-gray-200'}`}>
                 <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" /></svg>Student
               </button>
-              <button onClick={() => setRole('staff')} className={`flex-1 h-16 rounded-xl font-semibold text-lg transition-all flex items-center justify-center gap-2 ${role === 'staff' ? 'bg-blue-600 text-white shadow-md' : 'bg-gray-100 border border-gray-300 text-gray-700 hover:bg-gray-200'}`}>
-                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 6V4m0 2a2 2 0 100 4m0-4a2 2 0 110 4m-6 8a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4m6 6v10m6-2a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4" /></svg>Staff
+              <button onClick={() => setRole('staff')} className={`flex-1 h-16 rounded-xl font-semibold text-lg transition-all flex items-center justify-center gap-2 ${role === 'staff' ? 'bg-blue-700 text-white shadow-md' : 'bg-gray-100 border border-gray-300 text-gray-700 hover:bg-gray-200'}`}>
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" /></svg>Staff
               </button>
-              <button onClick={() => setRole('admin')} className={`flex-1 h-16 rounded-xl font-semibold text-lg transition-all flex items-center justify-center gap-2 ${role === 'admin' ? 'bg-purple-600 text-white shadow-md' : 'bg-gray-100 border border-gray-300 text-gray-700 hover:bg-gray-200'}`}>
-                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" /></svg>Admin
+              <button onClick={() => setRole('admin')} className={`flex-1 h-16 rounded-xl font-semibold text-lg transition-all flex items-center justify-center gap-2 ${role === 'admin' ? 'bg-yellow-500 text-white shadow-md' : 'bg-gray-100 border border-gray-300 text-gray-700 hover:bg-gray-200'}`}>
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 11c0-1.657-1.343-3-3-3s-3 1.343-3 3c0 1.104.597 2.071 1.5 2.605V18h3v-4.395A3.001 3.001 0 0012 11zM19 11c0-1.657-1.343-3-3-3s-3 1.343-3 3c0 1.104.597 2.071 1.5 2.605V18h3v-4.395A3.001 3.001 0 0019 11z" /></svg>Admin
               </button>
             </div>
 
@@ -253,8 +268,8 @@ export default function LoginPage() {
                     required
                     autoComplete="off"
                     name="student_username"
-                    value={username}
-                    onChange={e => setUsername(e.target.value)}
+                    value={studentUsername}
+                    onChange={e => setStudentUsername(e.target.value)}
                     className="mt-1 w-full rounded-xl border-gray-300 p-3 text-lg focus:ring-green-500 focus:border-green-500"
                     placeholder="e.g., S12345"
                   />
@@ -266,8 +281,8 @@ export default function LoginPage() {
                     required
                     autoComplete="new-password"
                     name="student_password"
-                    value={password}
-                    onChange={e => setPassword(e.target.value)}
+                    value={studentPassword}
+                    onChange={e => setStudentPassword(e.target.value)}
                     className="mt-1 w-full rounded-xl border-gray-300 p-3 text-lg focus:ring-green-500 focus:border-green-500"
                     placeholder="Enter your password"
                   />
@@ -283,85 +298,6 @@ export default function LoginPage() {
               </form>
             )}
 
-            {role === 'staff' && staffStep === 'select-office' && (
-              <div className="mt-6 space-y-4">
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-3">Select Your Office</label>
-                  {offices.length === 0 ? (
-                    <div className="text-center py-8 text-gray-500">Loading offices...</div>
-                  ) : (
-                    <div className="grid grid-cols-1 gap-3 max-h-[300px] overflow-y-auto">
-                      {offices.map((office) => (
-                        <button
-                          key={office.id}
-                          type="button"
-                          onClick={() => handleStaffOfficeSelection(office)}
-                          className="p-4 rounded-xl border-2 border-gray-200 hover:border-blue-500 hover:bg-blue-50 transition-all text-left flex items-center justify-between"
-                        >
-                          <div>
-                            <p className="font-semibold text-gray-800">{office.name}</p>
-                            <p className="text-sm text-gray-500">Service: {office.serviceType}</p>
-                          </div>
-                          <div className={`w-5 h-5 rounded-full border-2 ${office.status === 'open' ? 'border-green-500 bg-green-100' : 'border-red-500 bg-red-100'}`}></div>
-                        </button>
-                      ))}
-                    </div>
-                  )}
-                </div>
-              </div>
-            )}
-
-            {role === 'staff' && staffStep === 'login' && (
-              <form onSubmit={handleStaffLogin} autoComplete="off" className="mt-6 space-y-4">
-                <div className="p-4 bg-blue-50 rounded-xl border-l-4 border-blue-500">
-                  <p className="text-sm font-medium text-blue-900">Office: <strong>{selectedOffice?.name}</strong></p>
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700">Username</label>
-                  <input
-                    type="text"
-                    required
-                    autoComplete="off"
-                    name="staff_username"
-                    value={username}
-                    onChange={e => setUsername(e.target.value)}
-                    className="mt-1 w-full rounded-xl border border-gray-300 p-3 text-lg focus:ring-blue-500 focus:border-blue-500"
-                    placeholder="Enter office username"
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700">Password</label>
-                  <input
-                    type="password"
-                    required
-                    autoComplete="new-password"
-                    name="staff_password"
-                    value={password}
-                    onChange={e => setPassword(e.target.value)}
-                    className="mt-1 w-full rounded-xl border border-gray-300 p-3 text-lg focus:ring-blue-500 focus:border-blue-500"
-                    placeholder="Enter password"
-                  />
-                </div>
-                {error && <div className="text-red-600 text-sm bg-red-50 p-3 rounded-lg border border-red-200">{error}</div>}
-                <div className="flex gap-3">
-                  <button
-                    type="button"
-                    onClick={() => setStaffStep('select-office')}
-                    className="flex-1 bg-gray-200 hover:bg-gray-300 text-gray-800 font-semibold py-3 rounded-xl transition-all"
-                  >
-                    Back
-                  </button>
-                  <button
-                    type="submit"
-                    disabled={loading}
-                    className="flex-1 bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 rounded-xl transition-all disabled:opacity-50"
-                  >
-                    {loading ? 'Logging in...' : 'Login as Staff →'}
-                  </button>
-                </div>
-              </form>
-            )}
-
             {role === 'admin' && (
               <form onSubmit={handleAdminLogin} autoComplete="off" className="mt-6 space-y-4">
                 <div>
@@ -371,34 +307,51 @@ export default function LoginPage() {
                     required
                     autoComplete="off"
                     name="admin_username"
-                    value={username}
-                    onChange={e => setUsername(e.target.value)}
-                    className="mt-1 w-full rounded-xl border border-gray-300 p-3 text-lg focus:ring-purple-500 focus:border-purple-500"
-                    placeholder="Admin username"
+                    value={adminUsername}
+                    onChange={e => setAdminUsername(e.target.value)}
+                    className="mt-1 w-full rounded-xl border-gray-300 p-3 text-lg focus:ring-yellow-500 focus:border-yellow-500"
+                    placeholder="Enter admin username"
                   />
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-gray-700">Admin Password</label>
+                  <label className="block text-sm font-medium text-gray-700">Password</label>
                   <input
                     type="password"
                     required
                     autoComplete="new-password"
                     name="admin_password"
-                    value={password}
-                    onChange={e => setPassword(e.target.value)}
-                    className="mt-1 w-full rounded-xl border border-gray-300 p-3 text-lg focus:ring-purple-500 focus:border-purple-500"
-                    placeholder="Admin password"
+                    value={adminPassword}
+                    onChange={e => setAdminPassword(e.target.value)}
+                    className="mt-1 w-full rounded-xl border-gray-300 p-3 text-lg focus:ring-yellow-500 focus:border-yellow-500"
+                    placeholder="Enter admin password"
                   />
                 </div>
-                {error && <div className="text-red-600 text-sm bg-red-50 p-3 rounded-lg border border-red-200">{error}</div>}
+                {error && <div className="text-red-600 text-sm bg-red-50 p-2 rounded-lg">{error}</div>}
                 <button
                   type="submit"
                   disabled={loading}
-                  className="w-full bg-gradient-to-r from-purple-600 to-purple-500 text-white font-bold py-4 rounded-xl text-lg shadow-md hover:shadow-lg transition-all disabled:opacity-50 h-[64px]"
+                  className="w-full bg-yellow-500 hover:bg-yellow-600 text-white font-bold py-4 rounded-xl text-lg transition-all disabled:opacity-50 h-[64px]"
                 >
                   {loading ? 'Logging in...' : 'Login as Admin →'}
                 </button>
               </form>
+            )}
+
+            {role === 'staff' && (
+              <div className="mt-6 space-y-4">
+                <div className="rounded-2xl border border-blue-100 bg-blue-50 p-5">
+                  <h2 className="text-xl font-semibold text-blue-700">Staff Office Access</h2>
+                  <p className="text-gray-600 mt-2">Select your operational office and log in with your staff credentials.</p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setOfficeDialogOpen(true)}
+                  className="w-full bg-blue-700 hover:bg-blue-800 text-white font-bold py-4 rounded-xl text-lg transition-all h-[64px]"
+                >
+                  Select Office →
+                </button>
+                {error && <div className="text-red-600 text-sm bg-red-50 p-2 rounded-lg">{error}</div>}
+              </div>
             )}
 
             <div className="relative my-6">
@@ -420,6 +373,108 @@ export default function LoginPage() {
           </div>
         </div>
       </div>
+
+      {officeDialogOpen && (
+        <div className="fixed inset-0 z-50 bg-black/50 backdrop-blur-sm flex items-center justify-center p-4" onClick={() => setOfficeDialogOpen(false)}>
+          <div className="relative w-full max-w-3xl bg-white rounded-3xl shadow-2xl overflow-hidden" onClick={(e) => e.stopPropagation()}>
+            <div className="flex items-center justify-between p-6 border-b border-gray-200">
+              <div>
+                <h2 className="text-3xl font-bold text-gray-900">Staff Office Sign-in</h2>
+                <p className="text-gray-600 mt-1">Select your office and sign in with staff credentials.</p>
+              </div>
+              <button onClick={() => setOfficeDialogOpen(false)} className="text-gray-500 hover:text-gray-700">
+                <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12" /></svg>
+              </button>
+            </div>
+            <div className="p-6 grid gap-6 lg:grid-cols-[1.2fr_1fr]">
+              <div className="space-y-4">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <h3 className="text-xl font-semibold text-gray-900">Operational Offices</h3>
+                    <p className="text-gray-500 text-sm">Pick an open office to proceed.</p>
+                  </div>
+                  <button onClick={fetchOperativeOffices} className="text-sm font-semibold text-blue-600 hover:text-blue-800">Refresh</button>
+                </div>
+                {officeLoadError && (
+                  <div className="rounded-2xl border border-red-200 bg-red-50 p-4 text-sm text-red-700">
+                    {officeLoadError}
+                  </div>
+                )}
+                {officeLoading ? (
+                  <div className="rounded-3xl border border-dashed border-blue-200 h-44 flex items-center justify-center">
+                    <div className="animate-spin rounded-full h-10 w-10 border-b-2 border-blue-600"></div>
+                  </div>
+                ) : operationalOffices.length === 0 ? (
+                  <div className="rounded-3xl border border-dashed border-gray-300 p-8 text-center text-gray-500">
+                    No offices are currently open.
+                  </div>
+                ) : (
+                  <div className="grid gap-4">
+                    {operationalOffices.map((office) => (
+                      <button key={office.id} type="button" onClick={() => setSelectedOffice(office)} className={`w-full rounded-3xl border p-5 text-left transition ${selectedOffice?.id === office.id ? 'border-blue-500 bg-blue-50' : 'border-gray-200 bg-white hover:border-blue-300 hover:bg-blue-50'}`}>
+                        <div className="flex items-center justify-between gap-4">
+                          <div>
+                            <h4 className="text-lg font-semibold text-gray-900">{office.name}</h4>
+                            <p className="text-sm text-gray-500">{office.serviceType}</p>
+                          </div>
+                          <span className="px-3 py-1 rounded-full bg-green-100 text-green-700 text-xs uppercase tracking-wide">Open</span>
+                        </div>
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+              <div className="rounded-3xl border border-gray-200 bg-gray-50 p-6">
+                {selectedOffice ? (
+                  <>
+                    <div className="mb-5">
+                      <p className="text-xs uppercase tracking-[0.2em] text-gray-500">Selected office</p>
+                      <h3 className="text-2xl font-bold text-gray-900">{selectedOffice.name}</h3>
+                      <p className="text-sm text-gray-600">{selectedOffice.serviceType}</p>
+                    </div>
+                    <form onSubmit={handleStaffLogin} className="space-y-4">
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700">Staff Username</label>
+                        <input
+                          type="text"
+                          required
+                          autoComplete="off"
+                          value={staffUsername}
+                          onChange={(e) => setStaffUsername(e.target.value)}
+                          className="mt-1 w-full rounded-xl border-gray-300 p-3 text-lg focus:ring-blue-500 focus:border-blue-500"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700">Password</label>
+                        <input
+                          type="password"
+                          required
+                          autoComplete="new-password"
+                          value={staffPassword}
+                          onChange={(e) => setStaffPassword(e.target.value)}
+                          className="mt-1 w-full rounded-xl border-gray-300 p-3 text-lg focus:ring-blue-500 focus:border-blue-500"
+                        />
+                      </div>
+                      {error && <div className="text-red-600 text-sm bg-red-50 p-2 rounded-lg">{error}</div>}
+                      <button type="submit" disabled={loading} className="w-full bg-blue-700 hover:bg-blue-800 text-white font-bold py-4 rounded-xl text-lg transition-all disabled:opacity-50">
+                        {loading ? 'Signing in…' : 'Continue to Staff Dashboard'}
+                      </button>
+                      <button type="button" onClick={() => setSelectedOffice(null)} className="w-full text-center text-blue-600 hover:text-blue-800 font-semibold">
+                        Choose a different office
+                      </button>
+                    </form>
+                  </>
+                ) : (
+                  <div className="h-full rounded-3xl border border-dashed border-gray-300 p-8 flex flex-col items-center justify-center text-center text-gray-600">
+                    <p className="text-lg font-semibold">Pick an open office to sign in.</p>
+                    <p className="mt-2 text-sm">You will be prompted for staff credentials after choosing an office.</p>
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Live Queue Modal */}
       {showQueueModal && (
