@@ -246,7 +246,16 @@ app.get('/api/queue', async (req, res) => {
       .then((res) => res[0]?.count ?? 0)
 
     const serving = await db
-      .select()
+      .select({
+        id: queueEntries.id,
+        name: queueEntries.name,
+        studentId: queueEntries.studentId,
+        serviceType: queueEntries.serviceType,
+        queueNumber: queueEntries.queueNumber,
+        status: queueEntries.status,
+        createdAt: queueEntries.createdAt,
+        servedAt: queueEntries.servedAt,
+      })
       .from(queueEntries)
       .where(
         and(
@@ -525,7 +534,16 @@ app.get('/api/staff/queue/:officeId', async (req, res) => {
     }
 
     // Query queue entries by BOTH officeId AND serviceType to catch all relevant entries
-    const queueRows = await db.select().from(queueEntries).where(
+    const queueRows = await db.select({
+      id: queueEntries.id,
+      name: queueEntries.name,
+      studentId: queueEntries.studentId,
+      serviceType: queueEntries.serviceType,
+      queueNumber: queueEntries.queueNumber,
+      status: queueEntries.status,
+      createdAt: queueEntries.createdAt,
+      servedAt: queueEntries.servedAt,
+    }).from(queueEntries).where(
       or(
         eq(queueEntries.officeId, officeId),
         eq(queueEntries.serviceType, office.serviceType)
@@ -574,7 +592,16 @@ app.post('/api/staff/queue-action', async (req, res) => {
       )
       
       // Get next waiting entry using both officeId and serviceType
-      const nextWaiting = await db.select().from(queueEntries).where(
+      const nextWaiting = await db.select({
+        id: queueEntries.id,
+        name: queueEntries.name,
+        studentId: queueEntries.studentId,
+        serviceType: queueEntries.serviceType,
+        queueNumber: queueEntries.queueNumber,
+        status: queueEntries.status,
+        createdAt: queueEntries.createdAt,
+        servedAt: queueEntries.servedAt,
+      }).from(queueEntries).where(
         and(
           or(eq(queueEntries.officeId, officeId), eq(queueEntries.serviceType, office.serviceType)),
           eq(queueEntries.status, 'waiting')
