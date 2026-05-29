@@ -373,7 +373,16 @@ app.get('/api/queue/:id', async (req, res) => {
     const { id } = req.params
 
     const entry = await db
-      .select()
+      .select({
+        id: queueEntries.id,
+        name: queueEntries.name,
+        studentId: queueEntries.studentId,
+        serviceType: queueEntries.serviceType,
+        queueNumber: queueEntries.queueNumber,
+        status: queueEntries.status,
+        createdAt: queueEntries.createdAt,
+        servedAt: queueEntries.servedAt,
+      })
       .from(queueEntries)
       .where(eq(queueEntries.id, parseInt(id)))
       .limit(1)
@@ -396,7 +405,16 @@ app.get('/api/queue/:id', async (req, res) => {
       .then((res) => res[0]?.count ?? 0)
 
     const serving = await db
-      .select()
+      .select({
+        id: queueEntries.id,
+        name: queueEntries.name,
+        studentId: queueEntries.studentId,
+        serviceType: queueEntries.serviceType,
+        queueNumber: queueEntries.queueNumber,
+        status: queueEntries.status,
+        createdAt: queueEntries.createdAt,
+        servedAt: queueEntries.servedAt,
+      })
       .from(queueEntries)
       .where(
         and(
@@ -438,7 +456,16 @@ app.get('/api/ticketHistory', async (req, res) => {
     endOfDay.setDate(endOfDay.getDate() + 1)
 
     const tickets = await db
-      .select()
+      .select({
+        id: queueEntries.id,
+        name: queueEntries.name,
+        studentId: queueEntries.studentId,
+        serviceType: queueEntries.serviceType,
+        queueNumber: queueEntries.queueNumber,
+        status: queueEntries.status,
+        createdAt: queueEntries.createdAt,
+        servedAt: queueEntries.servedAt,
+      })
       .from(queueEntries)
       .where(
         and(
@@ -739,7 +766,16 @@ app.post('/api/admin/serve', checkAuth, async (req, res) => {
 
       // Get next waiting
       const waiting = await db
-        .select()
+        .select({
+          id: queueEntries.id,
+          name: queueEntries.name,
+          studentId: queueEntries.studentId,
+          serviceType: queueEntries.serviceType,
+          queueNumber: queueEntries.queueNumber,
+          status: queueEntries.status,
+          createdAt: queueEntries.createdAt,
+          servedAt: queueEntries.servedAt,
+        })
         .from(queueEntries)
         .where(
           and(
@@ -800,7 +836,16 @@ app.get('/api/admin/report', checkAuth, async (req, res) => {
     }
 
     const served = await db
-      .select()
+      .select({
+        id: queueEntries.id,
+        name: queueEntries.name,
+        studentId: queueEntries.studentId,
+        serviceType: queueEntries.serviceType,
+        queueNumber: queueEntries.queueNumber,
+        status: queueEntries.status,
+        createdAt: queueEntries.createdAt,
+        servedAt: queueEntries.servedAt,
+      })
       .from(queueEntries)
       .where(eq(queueEntries.status, 'served'))
       .orderBy(desc(queueEntries.servedAt))
