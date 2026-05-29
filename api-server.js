@@ -91,12 +91,14 @@ async function initializeDatabase() {
 
     // Test connection
     await client`SELECT 1`
+    console.log('✓ Database connection successful')
+    
     db = drizzle(client, { schema: { queueEntries, statusEnum, serviceEnum, officeStatusEnum, offices, staffAccounts } })
     connectionAttempts = 0
     return true
   } catch (error) {
     connectionAttempts++
-    throw new Error(`Database connection failed (attempt ${connectionAttempts}): ${error.message}`)
+    throw new Error(`Database initialization failed (attempt ${connectionAttempts}): ${error.message}`)
   }
 }
 
