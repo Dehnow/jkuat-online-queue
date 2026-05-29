@@ -297,7 +297,16 @@ app.post('/api/queue', async (req, res) => {
     }
 
     // Find the office for this service type
-    const office = await db.select().from(offices).where(eq(offices.serviceType, serviceType)).limit(1).then((rows) => rows[0] || null)
+    const office = await db.select({
+      id: offices.id,
+      name: offices.name,
+      serviceType: offices.serviceType,
+      status: offices.status,
+      username: offices.username,
+      password: offices.password,
+      createdAt: offices.createdAt,
+      createdBy: offices.createdBy,
+    }).from(offices).where(eq(offices.serviceType, serviceType)).limit(1).then((rows) => rows[0] || null)
     const officeId = office?.id || null
 
     // Server-side validation: Check daily limit (3 active tickets per student)
@@ -464,7 +473,16 @@ app.get('/api/staff/auth', async (req, res) => {
       return res.status(503).json({ error: 'Database not ready' })
     }
 
-    const officesList = await db.select().from(offices)
+    const officesList = await db.select({
+      id: offices.id,
+      name: offices.name,
+      serviceType: offices.serviceType,
+      status: offices.status,
+      username: offices.username,
+      password: offices.password,
+      createdAt: offices.createdAt,
+      createdBy: offices.createdBy,
+    }).from(offices)
     res.json({ offices: officesList })
   } catch (error) {
     console.error('Error fetching staff offices:', error)
@@ -484,14 +502,31 @@ app.post('/api/staff/auth', async (req, res) => {
       return res.status(400).json({ error: 'officeId, username and password are required' })
     }
 
-    const office = await db.select().from(offices).where(eq(offices.id, officeId)).limit(1).then((rows) => rows[0] || null)
+    const office = await db.select({
+      id: offices.id,
+      name: offices.name,
+      serviceType: offices.serviceType,
+      status: offices.status,
+      username: offices.username,
+      password: offices.password,
+      createdAt: offices.createdAt,
+      createdBy: offices.createdBy,
+    }).from(offices).where(eq(offices.id, officeId)).limit(1).then((rows) => rows[0] || null)
     if (!office) {
       return res.status(404).json({ error: 'Office not found' })
     }
 
     const defaultCredentialsMatch = username === 'office_staff' && password === '123'
     const officeCredentialsMatch = office.username === username && office.password === password
-    const staff = await db.select().from(staffAccounts).where(eq(staffAccounts.username, username)).limit(1).then((rows) => rows[0] || null)
+    const staff = await db.select({
+      id: staffAccounts.id,
+      officeId: staffAccounts.officeId,
+      username: staffAccounts.username,
+      password: staffAccounts.password,
+      hasAdminPrivilege: staffAccounts.hasAdminPrivilege,
+      createdAt: staffAccounts.createdAt,
+      createdBy: staffAccounts.createdBy,
+    }).from(staffAccounts).where(eq(staffAccounts.username, username)).limit(1).then((rows) => rows[0] || null)
     const staffValid = staff && staff.password === password && staff.officeId === officeId
 
     if (!defaultCredentialsMatch && !officeCredentialsMatch && !staffValid) {
@@ -528,7 +563,16 @@ app.get('/api/staff/queue/:officeId', async (req, res) => {
     }
 
     // Get the office details to find its service type
-    const office = await db.select().from(offices).where(eq(offices.id, officeId)).limit(1).then((rows) => rows[0] || null)
+    const office = await db.select({
+      id: offices.id,
+      name: offices.name,
+      serviceType: offices.serviceType,
+      status: offices.status,
+      username: offices.username,
+      password: offices.password,
+      createdAt: offices.createdAt,
+      createdBy: offices.createdBy,
+    }).from(offices).where(eq(offices.id, officeId)).limit(1).then((rows) => rows[0] || null)
     if (!office) {
       return res.status(404).json({ error: 'Office not found' })
     }
@@ -578,7 +622,16 @@ app.post('/api/staff/queue-action', async (req, res) => {
 
     if (action === 'call_next') {
       // Get office to find its service type
-      const office = await db.select().from(offices).where(eq(offices.id, officeId)).limit(1).then((rows) => rows[0] || null)
+      const office = await db.select({
+        id: offices.id,
+        name: offices.name,
+        serviceType: offices.serviceType,
+        status: offices.status,
+        username: offices.username,
+        password: offices.password,
+        createdAt: offices.createdAt,
+        createdBy: offices.createdBy,
+      }).from(offices).where(eq(offices.id, officeId)).limit(1).then((rows) => rows[0] || null)
       if (!office) {
         return res.status(404).json({ error: 'Office not found' })
       }
