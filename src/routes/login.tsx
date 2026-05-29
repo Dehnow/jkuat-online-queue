@@ -8,18 +8,32 @@ const ADMIN_DEFAULT_PASSWORD = 'group2sysdev'
 
 export default function LoginPage() {
   const navigate = useNavigate()
-  const [role, setRole] = useState<'student' | 'staff'>('student')
+  const [role, setRole] = useState<'student' | 'staff' | 'admin'>('student')
   const [username, setUsername] = useState('')
   const [password, setPassword] = useState('')
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
   const [showQueueModal, setShowQueueModal] = useState(false)
+  const [showStaffOfficeModal, setShowStaffOfficeModal] = useState(false)
+  const [offices, setOffices] = useState<any[]>([])
+  const [selectedOffice, setSelectedOffice] = useState<any>(null)
+  const [staffStep, setStaffStep] = useState<'select-office' | 'login'>('select-office')
 
   // Clear fields when role changes (prevents browser autofill cross‑contamination)
   useEffect(() => {
     setError('')
     setUsername('')
     setPassword('')
+    setSelectedOffice(null)
+    setStaffStep('select-office')
+    
+    // Fetch offices for staff login
+    if (role === 'staff') {
+      fetch('/api/staff/auth')
+        .then(res => res.json())
+        .then(data => setOffices(data.offices || []))
+        .catch(err => console.error('Failed to fetch offices:', err))
+    }
   }, [role])
 
   // Student login (mock – accepts any non‑empty credentials)
@@ -38,8 +52,59 @@ export default function LoginPage() {
     navigate({ to: '/dashboard' })
   }
 
-  // Staff login (Basic Auth)
+  // Staff login with office selection
+  const handleStaffOfficeSelection = (office: any) => {
+    setSelectedOffice(office)
+    setStaffStep('login')
+    setUsername('')
+    setPassword('')
+    setError('')
+  }
+
+  // Proceed with staff login after office selection
   const handleStaffLogin = async (e: React.FormEvent) => {
+    e.preventDefault()
+    setLoading(true)
+    setError('')
+    
+    if (!username.trim() || !password.trim()) {
+      setError('Please enter both username and password')
+      setLoading(false)
+      return
+    }
+
+    try {
+      const res = await fetch('/api/staff/auth', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          username: username.trim(),
+          password: password.trim(),
+          officeId: selectedOffice.id,
+        }),
+      })
+
+      const data = await res.json()
+
+      if (res.ok) {
+        sessionStorage.setItem('staffAuth', btoa(`${username}:${password}`))
+        sessionStorage.setItem('officeId', selectedOffice.id.toString())
+        sessionStorage.setItem('officeName', selectedOffice.name)
+        sessionStorage.setItem('userRole', 'staff')
+        navigate({ to: '/staff-dashboard' })
+      } else {
+        setError(data.error || 'Invalid credentials')
+      }
+    } catch (err) {
+      setError('Network error – try again')
+      console.error('[Staff Login] Error:', err)
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  // Admin login (original flow)
+  const handleAdminLogin = async (e: React.FormEvent) => {
     e.preventDefault()
     setLoading(true)
     setError('')
@@ -50,7 +115,7 @@ export default function LoginPage() {
       })
       if (res.ok) {
         sessionStorage.setItem('adminAuth', auth)
-        sessionStorage.setItem('userRole', 'staff')
+        sessionStorage.setItem('userRole', 'admin')
         navigate({ to: '/admin' })
       } else {
         setError('Invalid username or password')
@@ -171,8 +236,11 @@ export default function LoginPage() {
               <button onClick={() => setRole('student')} className={`flex-1 h-16 rounded-xl font-semibold text-lg transition-all flex items-center justify-center gap-2 ${role === 'student' ? 'bg-green-600 text-white shadow-md' : 'bg-gray-100 border border-gray-300 text-gray-700 hover:bg-gray-200'}`}>
                 <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" /></svg>Student
               </button>
-              <button onClick={() => setRole('staff')} className={`flex-1 h-16 rounded-xl font-semibold text-lg transition-all flex items-center justify-center gap-2 ${role === 'staff' ? 'bg-blue-700 text-white shadow-md' : 'bg-gray-100 border border-gray-300 text-gray-700 hover:bg-gray-200'}`}>
-                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" /></svg>Staff/Admin
+              <button onClick={() => setRole('staff')} className={`flex-1 h-16 rounded-xl font-semibold text-lg transition-all flex items-center justify-center gap-2 ${role === 'staff' ? 'bg-blue-600 text-white shadow-md' : 'bg-gray-100 border border-gray-300 text-gray-700 hover:bg-gray-200'}`}>
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 6V4m0 2a2 2 0 100 4m0-4a2 2 0 110 4m-6 8a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4m6 6v10m6-2a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4" /></svg>Staff
+              </button>
+              <button onClick={() => setRole('admin')} className={`flex-1 h-16 rounded-xl font-semibold text-lg transition-all flex items-center justify-center gap-2 ${role === 'admin' ? 'bg-purple-600 text-white shadow-md' : 'bg-gray-100 border border-gray-300 text-gray-700 hover:bg-gray-200'}`}>
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" /></svg>Admin
               </button>
             </div>
 
@@ -215,8 +283,39 @@ export default function LoginPage() {
               </form>
             )}
 
-            {role === 'staff' && (
+            {role === 'staff' && staffStep === 'select-office' && (
+              <div className="mt-6 space-y-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-3">Select Your Office</label>
+                  {offices.length === 0 ? (
+                    <div className="text-center py-8 text-gray-500">Loading offices...</div>
+                  ) : (
+                    <div className="grid grid-cols-1 gap-3 max-h-[300px] overflow-y-auto">
+                      {offices.map((office) => (
+                        <button
+                          key={office.id}
+                          type="button"
+                          onClick={() => handleStaffOfficeSelection(office)}
+                          className="p-4 rounded-xl border-2 border-gray-200 hover:border-blue-500 hover:bg-blue-50 transition-all text-left flex items-center justify-between"
+                        >
+                          <div>
+                            <p className="font-semibold text-gray-800">{office.name}</p>
+                            <p className="text-sm text-gray-500">Service: {office.serviceType}</p>
+                          </div>
+                          <div className={`w-5 h-5 rounded-full border-2 ${office.status === 'open' ? 'border-green-500 bg-green-100' : 'border-red-500 bg-red-100'}`}></div>
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
+
+            {role === 'staff' && staffStep === 'login' && (
               <form onSubmit={handleStaffLogin} autoComplete="off" className="mt-6 space-y-4">
+                <div className="p-4 bg-blue-50 rounded-xl border-l-4 border-blue-500">
+                  <p className="text-sm font-medium text-blue-900">Office: <strong>{selectedOffice?.name}</strong></p>
+                </div>
                 <div>
                   <label className="block text-sm font-medium text-gray-700">Username</label>
                   <input
@@ -226,7 +325,8 @@ export default function LoginPage() {
                     name="staff_username"
                     value={username}
                     onChange={e => setUsername(e.target.value)}
-                    className="mt-1 w-full rounded-xl border-gray-300 p-3 text-lg focus:ring-green-500 focus:border-green-500"
+                    className="mt-1 w-full rounded-xl border border-gray-300 p-3 text-lg focus:ring-blue-500 focus:border-blue-500"
+                    placeholder="Enter office username"
                   />
                 </div>
                 <div>
@@ -238,16 +338,65 @@ export default function LoginPage() {
                     name="staff_password"
                     value={password}
                     onChange={e => setPassword(e.target.value)}
-                    className="mt-1 w-full rounded-xl border-gray-300 p-3 text-lg focus:ring-green-500 focus:border-green-500"
+                    className="mt-1 w-full rounded-xl border border-gray-300 p-3 text-lg focus:ring-blue-500 focus:border-blue-500"
+                    placeholder="Enter password"
                   />
                 </div>
-                {error && <div className="text-red-600 text-sm bg-red-50 p-2 rounded-lg">{error}</div>}
+                {error && <div className="text-red-600 text-sm bg-red-50 p-3 rounded-lg border border-red-200">{error}</div>}
+                <div className="flex gap-3">
+                  <button
+                    type="button"
+                    onClick={() => setStaffStep('select-office')}
+                    className="flex-1 bg-gray-200 hover:bg-gray-300 text-gray-800 font-semibold py-3 rounded-xl transition-all"
+                  >
+                    Back
+                  </button>
+                  <button
+                    type="submit"
+                    disabled={loading}
+                    className="flex-1 bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 rounded-xl transition-all disabled:opacity-50"
+                  >
+                    {loading ? 'Logging in...' : 'Login as Staff →'}
+                  </button>
+                </div>
+              </form>
+            )}
+
+            {role === 'admin' && (
+              <form onSubmit={handleAdminLogin} autoComplete="off" className="mt-6 space-y-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700">Admin Username</label>
+                  <input
+                    type="text"
+                    required
+                    autoComplete="off"
+                    name="admin_username"
+                    value={username}
+                    onChange={e => setUsername(e.target.value)}
+                    className="mt-1 w-full rounded-xl border border-gray-300 p-3 text-lg focus:ring-purple-500 focus:border-purple-500"
+                    placeholder="Admin username"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700">Admin Password</label>
+                  <input
+                    type="password"
+                    required
+                    autoComplete="new-password"
+                    name="admin_password"
+                    value={password}
+                    onChange={e => setPassword(e.target.value)}
+                    className="mt-1 w-full rounded-xl border border-gray-300 p-3 text-lg focus:ring-purple-500 focus:border-purple-500"
+                    placeholder="Admin password"
+                  />
+                </div>
+                {error && <div className="text-red-600 text-sm bg-red-50 p-3 rounded-lg border border-red-200">{error}</div>}
                 <button
                   type="submit"
                   disabled={loading}
-                  className="w-full bg-blue-700 hover:bg-blue-800 text-white font-bold py-4 rounded-xl text-lg transition-all disabled:opacity-50 h-[64px]"
+                  className="w-full bg-gradient-to-r from-purple-600 to-purple-500 text-white font-bold py-4 rounded-xl text-lg shadow-md hover:shadow-lg transition-all disabled:opacity-50 h-[64px]"
                 >
-                  {loading ? 'Logging in...' : 'Login as Staff'}
+                  {loading ? 'Logging in...' : 'Login as Admin →'}
                 </button>
               </form>
             )}

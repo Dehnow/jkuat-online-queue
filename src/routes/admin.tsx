@@ -2,6 +2,8 @@ import { useNavigate } from '@tanstack/react-router'
 import { useState, useEffect, useCallback } from 'react'
 import { Building2, Banknote, Headphones } from 'lucide-react'
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts'
+import OfficeManagement from '../components/OfficeManagement'
+import FeedbackSystem from '../components/FeedbackSystem'
 type QueueEntry = {
   id: number
   name: string
@@ -70,7 +72,7 @@ export default function AdminPage() {
   const navigate = useNavigate()
   const [loggedIn, setLoggedIn] = useState(false)
   const [auth, setAuth] = useState('')
-  const [activeTab, setActiveTab] = useState<'queue' | 'report'>('queue')
+  const [activeTab, setActiveTab] = useState<'queue' | 'report' | 'offices' | 'feedback'>('queue')
   const [selectedOffice, setSelectedOffice] = useState<'registrar' | 'finance' | 'ict_helpdesk'>('registrar')
   const [serviceQueues, setServiceQueues] = useState<ServiceQueue[]>([])
   const [currentServing, setCurrentServing] = useState<QueueEntry | null>(null)
@@ -79,6 +81,7 @@ export default function AdminPage() {
   const [chartData, setChartData] = useState<{ hour: number; count: number }[]>([])
   const [actionLoading, setActionLoading] = useState(false)
   const [currentDateTime, setCurrentDateTime] = useState(new Date())
+  const [offices, setOffices] = useState<any[]>([])
 
   // Auth check
   useEffect(() => {
@@ -213,6 +216,29 @@ export default function AdminPage() {
     }
   }, [loggedIn, fetchAllData])
 
+  // Fetch offices
+  useEffect(() => {
+    const fetchOffices = async () => {
+      try {
+        const res = await fetch('/api/admin/offices', {
+          headers: { Authorization: `Basic ${auth}` }
+        })
+        if (res.ok) {
+          const data = await res.json()
+          setOffices(data.offices || [])
+        }
+      } catch (err) {
+        console.error('[Admin] Error fetching offices:', err)
+      }
+    }
+
+    if (auth) {
+      fetchOffices()
+      const interval = setInterval(fetchOffices, 15000)
+      return () => clearInterval(interval)
+    }
+  }, [auth])
+
   useEffect(() => {
     const timer = setInterval(() => setCurrentDateTime(new Date()), 1000)
     return () => clearInterval(timer)
@@ -286,20 +312,34 @@ export default function AdminPage() {
       </header>
 
       <main className="max-w-7xl mx-auto px-6 py-6">
-        <div className="flex gap-12 mb-8 border-b pb-2">
+        <div className="flex gap-6 mb-8 border-b pb-2 overflow-x-auto">
           <button
             onClick={() => setActiveTab('queue')}
-            className={`flex items-center gap-2 text-lg font-semibold pb-2 transition-all ${activeTab === 'queue' ? 'text-green-600 border-b-2 border-green-600' : 'text-gray-500'}`}
+            className={`flex items-center gap-2 text-lg font-semibold pb-2 transition-all whitespace-nowrap ${activeTab === 'queue' ? 'text-green-600 border-b-2 border-green-600' : 'text-gray-500'}`}
           >
             <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 6h16M4 12h16M4 18h16" /></svg>
             Queue Management
           </button>
           <button
             onClick={() => setActiveTab('report')}
-            className={`flex items-center gap-2 text-lg font-semibold pb-2 transition-all ${activeTab === 'report' ? 'text-green-600 border-b-2 border-green-600' : 'text-gray-500'}`}
+            className={`flex items-center gap-2 text-lg font-semibold pb-2 transition-all whitespace-nowrap ${activeTab === 'report' ? 'text-green-600 border-b-2 border-green-600' : 'text-gray-500'}`}
           >
             <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" /></svg>
             Service Report
+          </button>
+          <button
+            onClick={() => setActiveTab('offices')}
+            className={`flex items-center gap-2 text-lg font-semibold pb-2 transition-all whitespace-nowrap ${activeTab === 'offices' ? 'text-blue-600 border-b-2 border-blue-600' : 'text-gray-500'}`}
+          >
+            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" /></svg>
+            Offices
+          </button>
+          <button
+            onClick={() => setActiveTab('feedback')}
+            className={`flex items-center gap-2 text-lg font-semibold pb-2 transition-all whitespace-nowrap ${activeTab === 'feedback' ? 'text-purple-600 border-b-2 border-purple-600' : 'text-gray-500'}`}
+          >
+            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M8 10h.01M12 10h.01M16 10h.01M9 16H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-5l-5 5v-5z" /></svg>
+            Feedback
           </button>
         </div>
 
@@ -621,6 +661,47 @@ export default function AdminPage() {
               )}
             </div>
           </div>
+        )}
+
+        {activeTab === 'offices' && loggedIn && auth && (
+          <OfficeManagement
+            offices={offices}
+            onCreateOffice={async () => {
+              // Refetch offices after creation
+              const res = await fetch('/api/admin/offices', {
+                headers: { Authorization: `Basic ${auth}` }
+              })
+              if (res.ok) {
+                const data = await res.json()
+                setOffices(data.offices || [])
+              }
+            }}
+            onDeleteOffice={async () => {
+              // Refetch offices after deletion
+              const res = await fetch('/api/admin/offices', {
+                headers: { Authorization: `Basic ${auth}` }
+              })
+              if (res.ok) {
+                const data = await res.json()
+                setOffices(data.offices || [])
+              }
+            }}
+            onEditOffice={async () => {
+              // Refetch offices after editing
+              const res = await fetch('/api/admin/offices', {
+                headers: { Authorization: `Basic ${auth}` }
+              })
+              if (res.ok) {
+                const data = await res.json()
+                setOffices(data.offices || [])
+              }
+            }}
+            adminAuth={auth}
+          />
+        )}
+
+        {activeTab === 'feedback' && loggedIn && auth && (
+          <FeedbackSystem adminAuth={auth} offices={offices} />
         )}
       </main>
     </div>
