@@ -40,20 +40,20 @@ if (NODE_ENV === 'production') {
 }
 
 // M-Pesa Configuration
-// IMPORTANT: Set MPESA_SANDBOX=false in Render environment to enable real M-Pesa STK prompts
 // NOTE: Environment variables use these exact names in Render:
 // - CONSUMER_KEY (not MPESA_CONSUMER_KEY)
 // - CONSUMER_SECRET (not MPESA_CONSUMER_SECRET)
 // - PASSKEY (not MPESA_PASSKEY)
 // - SHORTCODE (not MPESA_SHORTCODE)
 // - CALLBACK_URL (not MPESA_CALLBACK_URL)
+// Trigger refresh v2
 
 const SANDBOX_CONSUMER_KEY = '4PvGSK0r7RiNmZkjnEwYlQ2xAzB8sD3qF5gH6tJ9oP1u2v'
 const SANDBOX_CONSUMER_SECRET = 'wX3yZ9lM5kJ8nB2vC7pDqRsT4uFgH6jK9oL1mN3pQ4rS5tU'
 const SANDBOX_PASSKEY = 'bfb279f9ba9b9d1380007480bbe7f27425e1aa6d4ede3891ec337007a74ff42'
 
 const MPESA_CONFIG = {
-  isSandbox: process.env.MPESA_SANDBOX !== 'false',  // Default: true (sandbox). Set to 'false' for production
+  isSandbox: process.env.MPESA_SANDBOX !== 'false',  // Default: true (sandbox). Set MPESA_SANDBOX=false for production
   // Check Render environment variable names first, then MPESA_ prefixed, then sandbox defaults
   consumerKey: process.env.CONSUMER_KEY || process.env.MPESA_CONSUMER_KEY || SANDBOX_CONSUMER_KEY,
   consumerSecret: process.env.CONSUMER_SECRET || process.env.MPESA_CONSUMER_SECRET || SANDBOX_CONSUMER_SECRET,
@@ -65,6 +65,8 @@ const MPESA_CONFIG = {
     : 'http://localhost:3000/api/queue/mpesa-callback')
 }
 
+console.log(`DEBUG MPESA_SANDBOX env var: "${process.env.MPESA_SANDBOX}"`)
+console.log(`DEBUG Condition (MPESA_SANDBOX !== 'false'): ${process.env.MPESA_SANDBOX !== 'false'}`)
 console.log(`INFO M-Pesa Mode: ${MPESA_CONFIG.isSandbox ? 'SANDBOX 🧪 (simulated payments)' : 'PRODUCTION 🚀 (real M-Pesa)'}`)
 console.log(`INFO Environment: ${NODE_ENV === 'production' ? 'PRODUCTION (Render)' : 'DEVELOPMENT'}`)
 console.log(`INFO Callback URL: ${MPESA_CONFIG.callbackUrl}`)
@@ -1253,7 +1255,7 @@ app.post('/api/queue/:id/mpesa-pay', async (req, res) => {
     }
   } catch (error) {
     console.error('Error initiating M-Pesa payment:', error)
-    res.status(500).json({ error: 'Internal server error', details: error.message })
+    return res.status(500).json({ error: 'Internal server error', details: error.message })
   }
 })
 
