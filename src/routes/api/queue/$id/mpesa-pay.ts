@@ -3,6 +3,44 @@ import { db } from '../../../../db/index'
 import { queueEntries } from '../../../../db/schema'
 import { eq, and, sql } from 'drizzle-orm'
 
+// Helper function to provide troubleshooting suggestions
+function getSuggestions(responseCode: string | number | undefined) {
+  const suggestions: { [key: string]: string[] } = {
+    '01': [
+      'Invalid Consumer Key or Consumer Secret',
+      'Check CONSUMER_KEY and CONSUMER_SECRET in Render environment variables',
+      'Verify credentials in Daraja Dashboard: https://developer.safaricom.co.ke/',
+    ],
+    '08': [
+      'M-Pesa system error',
+      'Please try again in a few moments',
+      'If problem persists, contact Safaricom support',
+    ],
+    '14': [
+      'Invalid phone number format',
+      'Use format: +254712345678 or 0712345678',
+      'Phone number must start with 254 (Kenya country code) or 0',
+    ],
+    '20': [
+      'Invalid Passkey',
+      'Check PASSKEY in Render environment variables',
+      'Verify passkey in M-Pesa Online configuration',
+    ],
+    '25': [
+      'Invalid account (Till Number/Shortcode)',
+      'Check SHORTCODE in Render environment variables',
+      'Verify till number in M-Pesa Online settings',
+    ],
+  }
+  
+  const code = String(responseCode)
+  return suggestions[code] || [
+    `M-Pesa error code: ${responseCode}`,
+    'Check the error message for details',
+    'Verify all M-Pesa credentials in Render environment',
+  ]
+}
+
 // M-PESA Configuration
 const MPESA_CONSUMER_KEY = process.env.CONSUMER_KEY || process.env.MPESA_CONSUMER_KEY || ''
 const MPESA_CONSUMER_SECRET = process.env.CONSUMER_SECRET || process.env.MPESA_CONSUMER_SECRET || ''
@@ -100,9 +138,11 @@ async function initiateMpesaPayment(phoneNumber: string, amount: number, queueId
 
     const data: any = await response.json()
     
+    console.log(`   Response Status: ${response.status}`)
     console.log(`   Response Code: ${data.ResponseCode}`)
     console.log(`   CheckoutRequestID: ${data.CheckoutRequestID}`)
     console.log(`   Description: ${data.ResponseDescription}`)
+    console.log(`   Full Response:`, JSON.stringify(data, null, 2))
     
     if (data.ResponseCode === '0' || data.ResponseCode === 0) {
       return {
@@ -111,9 +151,19 @@ async function initiateMpesaPayment(phoneNumber: string, amount: number, queueId
         responseMessage: data.ResponseDescription,
       }
     } else {
+      // Detailed error reporting
+      const errorCode = data.ResponseCode || 'UNKNOWN'
+      const errorMsg = data.ResponseDescription || 'Failed to initiate payment'
+      
+      console.error(`❌ STK Push error: ResponseCode=${errorCode}`)
+      console.error(`   Message: ${errorMsg}`)
+      console.error(`   Full response:`, JSON.stringify(data, null, 2))
+      
       return {
         success: false,
-        error: data.ResponseDescription || 'Failed to initiate payment',
+        error: errorMsg,
+        responseCode: errorCode,
+        details: data,
       }
     }
   } catch (error) {
@@ -266,6 +316,16 @@ export async function POST(request: Request, { params }: { params: { id: string 
           })
         } else {
           console.error(`❌ STK Push initiation failed: ${paymentResult.error}`)
+          console.error(`   Response Code: ${paymentResult.responseCode}`)
+          console.error(`   Details:`, JSON.stringify(paymentResult.details, null, 2))
+          
+          return json({
+            error: paymentResult.error,
+            message: `Payment initiation failed: ${paymentResult.error}`,
+            responseCode: paymentResult.responseCode,
+            details: paymentResult.details,
+            suggestions: getSuggestions(paymentResult.responseCode),
+          }, { status: 400 })
           return json({
             success: false,
             error: paymentResult.error,

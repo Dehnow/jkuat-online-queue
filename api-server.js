@@ -1213,7 +1213,7 @@ app.post('/api/queue/:id/mpesa-pay', async (req, res) => {
         const stkData = await stkResponse.json()
 
         console.log(`DEBUG STK Response Status: ${stkResponse.status}`)
-        console.log(`DEBUG STK Response Data:`, stkData)
+        console.log(`DEBUG STK Response Data:`, JSON.stringify(stkData, null, 2))
 
         if (stkData.ResponseCode === '0' || stkData.errorCode === '0') {
           // STK Push initiated successfully
@@ -1227,8 +1227,10 @@ app.post('/api/queue/:id/mpesa-pay', async (req, res) => {
             })
             .where(eq(queueEntries.id, Number(id)))
 
-          console.log(`INFO STK Push initiated (PRODUCTION): ${goldenTicketRef}`)
-          console.log(`INFO CheckoutRequestID: ${stkData.CheckoutRequestID}`)
+          console.log(`✅ STK Push initiated (PRODUCTION): ${goldenTicketRef}`)
+          console.log(`   CheckoutRequestID: ${stkData.CheckoutRequestID}`)
+          console.log(`   Phone: ${phoneNumber}`)
+          console.log(`   Amount: KES 50`)
 
           return res.status(200).json({
             success: true,
@@ -1241,9 +1243,31 @@ app.post('/api/queue/:id/mpesa-pay', async (req, res) => {
             sandbox: false,
           })
         } else {
-          const errorMsg = stkData.errorMessage || stkData.ResponseDescription || JSON.stringify(stkData)
-          console.error(`ERROR STK Push failed: ${errorMsg}`)
-          throw new Error(`STK Push failed: ${errorMsg}`)
+          // STK Push failed - Detailed error logging
+          const responseCode = stkData.ResponseCode || stkData.errorCode || 'UNKNOWN'
+          const errorMsg = stkData.ResponseDescription || stkData.errorMessage || stkData.CustomerMessage || 'Unknown error'
+          
+          console.error(`❌ STK Push FAILED`)
+          console.error(`   Response Code: ${responseCode}`)
+          console.error(`   Error Message: ${errorMsg}`)
+          console.error(`   Phone: ${phoneNumber}`)
+          console.error(`   Shortcode: ${MPESA_CONFIG.tillNumber}`)
+          console.error(`   Callback URL: ${MPESA_CONFIG.callbackUrl}`)
+          console.error(`   Full Response:`, JSON.stringify(stkData, null, 2))
+          
+          // Map error codes to user-friendly messages
+          const errorCodeMap = {
+            '01': 'Invalid credentials - check CONSUMER_KEY and CONSUMER_SECRET in Render environment',
+            '08': 'System error from M-Pesa - try again later',
+            '14': 'Invalid phone number - check format',
+            '20': 'Invalid password - check PASSKEY in Render environment',
+            '25': 'Invalid account - check SHORTCODE in Render environment',
+            'timeout': 'M-Pesa API timeout - try again',
+          }
+          
+          const userMessage = errorCodeMap[responseCode] || `M-Pesa error ${responseCode}: ${errorMsg}`
+          
+          throw new Error(`STK Push failed: ${userMessage}`)
         }
       } catch (stkError) {
         console.error('ERROR STK Push error:', stkError.message)
