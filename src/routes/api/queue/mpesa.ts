@@ -29,6 +29,7 @@ async function getMpesaAccessToken(): Promise<string> {
       ? 'https://sandbox.safaricom.co.ke'
       : 'https://api.safaricom.co.ke'
     
+    console.log(`🔐 Requesting M-Pesa access token from ${baseUrl}`)
     const response = await fetch(`${baseUrl}/oauth/v1/generate?grant_type=client_credentials`, {
       method: 'GET',
       headers: {
@@ -37,9 +38,15 @@ async function getMpesaAccessToken(): Promise<string> {
     })
 
     const data: any = await response.json()
+    
+    if (!data.access_token) {
+      throw new Error(data.error_description || 'Failed to get access token')
+    }
+    
+    console.log(`✅ M-Pesa access token obtained`)
     return data.access_token
   } catch (error) {
-    console.error('Failed to get M-PESA access token:', error)
+    console.error('❌ Failed to get M-PESA access token:', error)
     throw error
   }
 }
@@ -157,20 +164,25 @@ export async function POST(request: Request) {
         )
 
         if (paymentResult.success) {
-          // Store the checkout request ID temporarily
+          // 🔥 CRITICAL: Set status to PENDING immediately after STK push initiation
+          // Status will only change to 'success' after M-Pesa callback
           await db.update(queueEntries)
             .set({
               mpesaTransactionId: paymentResult.checkoutRequestId,
+              mpesaStatus: 'pending',  // 🔥 MUST be pending until callback
             })
             .where(eq(queueEntries.id, queueId))
 
+          console.log(`✅ STK Push initiated. Status set to PENDING: ${paymentResult.checkoutRequestId}`)
           return json({
             success: true,
             message: 'Payment prompt sent to your phone',
             checkoutRequestId: paymentResult.checkoutRequestId,
+            mpesaStatus: 'pending',
             environment: SANDBOX_MODE ? 'sandbox' : 'production',
           })
         } else {
+          console.error(`❌ STK Push initiation failed: ${paymentResult.error}`)
           return json({
             success: false,
             error: paymentResult.error,

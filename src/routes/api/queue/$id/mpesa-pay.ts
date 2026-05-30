@@ -23,6 +23,7 @@ async function getMpesaAccessToken(): Promise<string> {
       ? 'https://sandbox.safaricom.co.ke'
       : 'https://api.safaricom.co.ke'
     
+    console.log(`🔐 Requesting M-Pesa access token from ${baseUrl}`)
     const response = await fetch(`${baseUrl}/oauth/v1/generate?grant_type=client_credentials`, {
       method: 'GET',
       headers: {
@@ -36,9 +37,10 @@ async function getMpesaAccessToken(): Promise<string> {
       throw new Error(data.error_description || 'Failed to get access token')
     }
     
+    console.log(`✅ M-Pesa access token obtained`)
     return data.access_token
   } catch (error) {
-    console.error('Failed to get M-PESA access token:', error)
+    console.error('❌ Failed to get M-PESA access token:', error)
     throw error
   }
 }
@@ -69,30 +71,40 @@ async function initiateMpesaPayment(phoneNumber: string, amount: number, queueId
       ? 'https://sandbox.safaricom.co.ke'
       : 'https://api.safaricom.co.ke'
 
+    const stkPayload = {
+      BusinessShortCode: shortCode,
+      Password: password,
+      Timestamp: timestamp,
+      TransactionType: 'CustomerPayBillOnline',
+      Amount: amount,
+      PartyA: phoneNumber,
+      PartyB: shortCode,
+      PhoneNumber: phoneNumber,
+      CallBackURL: MPESA_CALLBACK_URL,
+      AccountReference: goldenRef,
+      TransactionDesc: `Golden Ticket Payment - Ref: ${goldenRef}`,
+    }
+
+    console.log(`📱 Initiating STK Push to ${phoneNumber} for ${goldenRef}`)
+    console.log(`   Amount: KES ${amount}`)
+    console.log(`   Callback URL: ${MPESA_CALLBACK_URL}`)
+
     const response = await fetch(`${baseUrl}/mpesa/stkpush/v1/processrequest`, {
       method: 'POST',
       headers: {
         Authorization: `Bearer ${token}`,
         'Content-Type': 'application/json',
       },
-      body: JSON.stringify({
-        BusinessShortCode: shortCode,
-        Password: password,
-        Timestamp: timestamp,
-        TransactionType: 'CustomerPayBillOnline',
-        Amount: amount,
-        PartyA: phoneNumber,
-        PartyB: shortCode,
-        PhoneNumber: phoneNumber,
-        CallBackURL: MPESA_CALLBACK_URL,
-        AccountReference: goldenRef,
-        TransactionDesc: `Golden Ticket Payment - Ref: ${goldenRef}`,
-      }),
+      body: JSON.stringify(stkPayload),
     })
 
     const data: any = await response.json()
     
-    if (data.ResponseCode === '0') {
+    console.log(`   Response Code: ${data.ResponseCode}`)
+    console.log(`   CheckoutRequestID: ${data.CheckoutRequestID}`)
+    console.log(`   Description: ${data.ResponseDescription}`)
+    
+    if (data.ResponseCode === '0' || data.ResponseCode === 0) {
       return {
         success: true,
         checkoutRequestId: data.CheckoutRequestID,
@@ -105,7 +117,7 @@ async function initiateMpesaPayment(phoneNumber: string, amount: number, queueId
       }
     }
   } catch (error) {
-    console.error('M-PESA payment initiation error:', error)
+    console.error('❌ M-PESA payment initiation error:', error)
     throw error
   }
 }
@@ -170,7 +182,7 @@ export async function POST(request: Request, { params }: { params: { id: string 
       // Sandbox: Simulate STK push (DO NOT auto-complete - user must manually trigger callback)
       const checkoutRequestId = `SANDBOX_${id}_${Date.now()}`
       
-      // Set as pending - wait for callback
+      // 🔥 CRITICAL: Set as pending - wait for callback
       await db.update(queueEntries)
         .set({
           goldenTicketRef,
@@ -180,13 +192,13 @@ export async function POST(request: Request, { params }: { params: { id: string 
         .where(eq(queueEntries.id, id))
 
       console.log(`✅ SANDBOX: STK Push initiated for ${goldenTicketRef}`)
+      console.log(`   Queue ID: ${id}`)
+      console.log(`   Checkout Request ID: ${checkoutRequestId}`)
+      console.log(`   Status: PENDING (waiting for user PIN entry or callback)`)
       console.log(`📱 User should see M-Pesa prompt on phone`)
-      console.log(`⏳ Status remains PENDING until callback is received`)
-      console.log(`🔗 Testing callback: POST /api/queue/mpesa-callback with ResultCode 0 to complete payment`)
+      console.log(`⏳ Status remains PENDING until callback is received with ResultCode 0`)
+      console.log(`🔗 Testing: POST /api/queue/mpesa-callback with ResultCode 0 to complete payment`)
       
-      // DO NOT auto-complete in sandbox - this is the bug!
-      // The user (or test script) must manually trigger the callback
-
       return json({
         success: true,
         checkoutRequestId,
@@ -195,6 +207,7 @@ export async function POST(request: Request, { params }: { params: { id: string 
         mpesaStatus: 'pending',
         goldenTicketRef,
         sandbox: true,
+        queueId: id,
         testingNote: 'To test completion, POST to /api/queue/mpesa-callback with the callback payload',
       })
     } else {
@@ -227,7 +240,8 @@ export async function POST(request: Request, { params }: { params: { id: string 
         )
 
         if (paymentResult.success) {
-          // Store the checkout request ID temporarily
+          // 🔥 CRITICAL: Store the checkout request ID and set status to PENDING
+          // Status will change to 'success' only after M-Pesa callback is received
           await db.update(queueEntries)
             .set({
               mpesaTransactionId: paymentResult.checkoutRequestId,
@@ -236,7 +250,11 @@ export async function POST(request: Request, { params }: { params: { id: string 
             })
             .where(eq(queueEntries.id, id))
 
-          console.log(`INFO STK Push initiated (PRODUCTION): ${goldenTicketRef}`)
+          console.log(`✅ STK Push initiated (PRODUCTION): ${goldenTicketRef}`)
+          console.log(`   CheckoutRequestID: ${paymentResult.checkoutRequestId}`)
+          console.log(`   Database Status: PENDING`)
+          console.log(`   Waiting for M-Pesa callback...`)
+          
           return json({
             success: true,
             message: 'Payment prompt sent to your phone',
@@ -244,8 +262,10 @@ export async function POST(request: Request, { params }: { params: { id: string 
             environment: SANDBOX_MODE ? 'sandbox' : 'production',
             mpesaStatus: 'pending',
             goldenTicketRef,
+            queueId: id,
           })
         } else {
+          console.error(`❌ STK Push initiation failed: ${paymentResult.error}`)
           return json({
             success: false,
             error: paymentResult.error,
