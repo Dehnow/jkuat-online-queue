@@ -40,16 +40,21 @@ if (NODE_ENV === 'production') {
 }
 
 // M-Pesa Configuration
+// IMPORTANT: Set MPESA_SANDBOX=false in Render environment to enable real M-Pesa STK prompts
 const MPESA_CONFIG = {
-  isSandbox: process.env.MPESA_SANDBOX !== 'false',
+  isSandbox: process.env.MPESA_SANDBOX !== 'false',  // Default: true (sandbox). Set to 'false' for production
   consumerKey: process.env.MPESA_CONSUMER_KEY || 'YLPydMh4xhirGrux1cdHyqKRCE3BzinLxdlzed4s88XyiRnu',
   consumerSecret: process.env.MPESA_CONSUMER_SECRET || 'RuAadmSxyhwAqjk1GqEwW3vyoDtbCD0nByXAHR7GZw0COLoxSI6u0AKa91wSL4uw',
   passkey: process.env.MPESA_PASSKEY || 'bfb279f9aa9bdbcf158e97dd71a467cd2e0c893059b10f78e6b72ada1ed2c919',
   tillNumber: process.env.MPESA_TILL_NUMBER || '174379',
-  callbackUrl: process.env.MPESA_CALLBACK_URL || 'http://localhost:3000/api/queue/mpesa-callback'
+  // IMPORTANT: M-Pesa requires the public URL for callbacks. In Render, must be HTTPS.
+  callbackUrl: process.env.MPESA_CALLBACK_URL || (NODE_ENV === 'production' 
+    ? 'https://jkuat-online-queue.onrender.com/api/queue/mpesa-callback'
+    : 'http://localhost:3000/api/queue/mpesa-callback')
 }
 
-console.log(`INFO M-Pesa Mode: ${MPESA_CONFIG.isSandbox ? 'SANDBOX 🧪' : 'PRODUCTION 🚀'}`)
+console.log(`INFO M-Pesa Mode: ${MPESA_CONFIG.isSandbox ? 'SANDBOX 🧪 (simulated payments)' : 'PRODUCTION 🚀 (real M-Pesa)'}`)
+console.log(`INFO Callback URL: ${MPESA_CONFIG.callbackUrl}`)
 
 // Schema
 const statusEnum = pgEnum('queue_status', ['waiting', 'serving', 'served', 'cancelled'])
