@@ -5,6 +5,7 @@ export const serviceEnum = pgEnum("service_type", ["registrar", "finance", "ict_
 export const officeStatusEnum = pgEnum("office_status", ["open", "closed"]);
 export const messageTypeEnum = pgEnum("message_type", ["feedback", "admin_request", "admin_response"]);
 export const requestStatusEnum = pgEnum("request_status", ["pending", "approved", "rejected"]);
+export const mpesaStatusEnum = pgEnum("mpesa_status", ["pending", "success", "failed"]);
 
 export const queueEntries = pgTable("queue_entries", {
   id: serial().primaryKey(),
@@ -16,6 +17,12 @@ export const queueEntries = pgTable("queue_entries", {
   createdAt: timestamp("created_at").defaultNow(),
   servedAt: timestamp("served_at"),
   officeId: integer("office_id"),
+  // Golden ticket fields
+  isGolden: boolean("is_golden").notNull().default(false),
+  goldenTicketRef: text("golden_ticket_ref"),
+  mpesaTransactionId: text("mpesa_transaction_id"),
+  mpesaStatus: mpesaStatusEnum("mpesa_status"),
+  mpesaPaidAt: timestamp("mpesa_paid_at"),
 });
 
 export const offices = pgTable("offices", {

@@ -37,6 +37,7 @@ if (NODE_ENV === 'production') {
 const statusEnum = pgEnum('queue_status', ['waiting', 'serving', 'served', 'cancelled'])
 const serviceEnum = pgEnum('service_type', ['registrar', 'finance', 'ict_helpdesk'])
 const officeStatusEnum = pgEnum('office_status', ['open', 'closed'])
+const mpesaStatusEnum = pgEnum('mpesa_status', ['pending', 'success', 'failed'])
 
 const queueEntries = pgTable('queue_entries', {
   id: serial().primaryKey(),
@@ -48,6 +49,12 @@ const queueEntries = pgTable('queue_entries', {
   createdAt: timestamp('created_at').defaultNow(),
   servedAt: timestamp('served_at'),
   officeId: integer('office_id'),
+  // Golden ticket fields
+  isGolden: boolean('is_golden').notNull().default(false),
+  goldenTicketRef: text('golden_ticket_ref'),
+  mpesaTransactionId: text('mpesa_transaction_id'),
+  mpesaStatus: mpesaStatusEnum('mpesa_status'),
+  mpesaPaidAt: timestamp('mpesa_paid_at'),
 })
 
 const offices = pgTable('offices', {
@@ -91,14 +98,12 @@ async function initializeDatabase() {
 
     // Test connection
     await client`SELECT 1`
-    console.log('✓ Database connection successful')
-    
     db = drizzle(client, { schema: { queueEntries, statusEnum, serviceEnum, officeStatusEnum, offices, staffAccounts } })
     connectionAttempts = 0
     return true
   } catch (error) {
     connectionAttempts++
-    throw new Error(`Database initialization failed (attempt ${connectionAttempts}): ${error.message}`)
+    throw new Error(`Database connection failed (attempt ${connectionAttempts}): ${error.message}`)
   }
 }
 
@@ -214,13 +219,67 @@ function checkAuth(req, res, next) {
 // Routes
 
 // Health check - returns immediately, doesn't require database
-app.get('/api/health', (req, res) => {
-  res.json({ 
-    status: 'ok', 
-    timestamp: new Date().toISOString(), 
+app.get('/api/health', async (req, res) => {
+  const health = {
+    status: 'ok',
+    timestamp: new Date().toISOString(),
     environment: NODE_ENV,
-    databaseConnected: !!db
-  })
+    databaseConnected: !!db,
+    database: {
+      connected: false,
+      tables: {},
+      error: null
+    }
+  }
+
+  if (db) {
+    try {
+      // Test basic connectivity
+      await db.select(sql`1`)
+      health.database.connected = true
+
+      // Check table existence and row counts
+      const tableChecks = [
+        { name: 'offices', table: offices },
+        { name: 'queue_entries', table: queueEntries },
+        { name: 'staff_accounts', table: staffAccounts }
+      ]
+
+      for (const { name, table } of tableChecks) {
+        try {
+          const result = await db.select({ count: dbCount() }).from(table)
+          health.database.tables[name] = {
+            exists: true,
+            rowCount: result[0]?.count ?? 0
+          }
+        } catch (err) {
+          health.database.tables[name] = {
+            exists: false,
+            error: err.message
+          }
+        }
+      }
+
+      // If we have the offices table, try to get a sample
+      if (health.database.tables.offices?.exists && health.database.tables.offices?.rowCount > 0) {
+        try {
+          const sampleOffice = await db.select().from(offices).limit(1)
+          health.database.sampleOfficeData = sampleOffice[0] ? {
+            id: sampleOffice[0].id,
+            name: sampleOffice[0].name,
+            serviceType: sampleOffice[0].serviceType
+          } : null
+        } catch (err) {
+          health.database.sampleOfficeError = err.message
+        }
+      }
+    } catch (err) {
+      health.database.connected = false
+      health.database.error = err.message
+    }
+  }
+
+  res.json(health)
 })
 
 // GET /api/queue - Get queue stats for a service
@@ -257,6 +316,9 @@ app.get('/api/queue', async (req, res) => {
         status: queueEntries.status,
         createdAt: queueEntries.createdAt,
         servedAt: queueEntries.servedAt,
+        isGolden: queueEntries.isGolden,
+        goldenTicketRef: queueEntries.goldenTicketRef,
+        mpesaStatus: queueEntries.mpesaStatus,
       })
       .from(queueEntries)
       .where(
@@ -499,11 +561,9 @@ app.get('/api/ticketHistory', async (req, res) => {
 app.get('/api/staff/auth', async (req, res) => {
   try {
     if (!db) {
-      console.log('Database not ready for GET /api/staff/auth')
       return res.status(503).json({ error: 'Database not ready' })
     }
 
-    console.log('Fetching offices list...')
     const officesList = await db.select({
       id: offices.id,
       name: offices.name,
@@ -514,14 +574,10 @@ app.get('/api/staff/auth', async (req, res) => {
       createdAt: offices.createdAt,
       createdBy: offices.createdBy,
     }).from(offices)
-    console.log('Successfully fetched offices:', officesList.length, 'offices')
     res.json({ offices: officesList })
   } catch (error) {
-    console.error('ERROR fetching staff offices:')
-    console.error('  Message:', error.message)
-    console.error('  Code:', error.code)
-    console.error('  Stack:', error.stack)
-    res.status(500).json({ error: 'Failed to fetch offices', details: error.message })
+    console.error('Error fetching staff offices:', error)
+    res.status(500).json({ error: 'Failed to fetch offices' })
   }
 })
 
@@ -580,11 +636,8 @@ app.post('/api/staff/auth', async (req, res) => {
       office,
     })
   } catch (error) {
-    console.error('ERROR authenticating staff:')
-    console.error('  Message:', error.message)
-    console.error('  Code:', error.code)
-    console.error('  Stack:', error.stack)
-    res.status(500).json({ error: 'Authentication failed', details: error.message })
+    console.error('Error authenticating staff:', error)
+    res.status(500).json({ error: 'Authentication failed' })
   }
 })
 
@@ -641,12 +694,8 @@ app.get('/api/staff/queue/:officeId', async (req, res) => {
       },
     })
   } catch (error) {
-    const officeId = req.params.officeId
-    console.error('ERROR fetching staff queue for officeId', officeId, ':')
-    console.error('  Message:', error.message)
-    console.error('  Code:', error.code)
-    console.error('  Stack:', error.stack)
-    res.status(500).json({ error: 'Failed to fetch staff queue', details: error.message })
+    console.error('Error fetching staff queue:', error)
+    res.status(500).json({ error: 'Failed to fetch staff queue' })
   }
 })
 
@@ -727,11 +776,8 @@ app.post('/api/staff/queue-action', async (req, res) => {
 
     res.status(400).json({ error: 'Invalid action' })
   } catch (error) {
-    console.error('ERROR handling staff queue action:')
-    console.error('  Message:', error.message)
-    console.error('  Code:', error.code)
-    console.error('  Stack:', error.stack)
-    res.status(500).json({ error: 'Failed to perform queue action', details: error.message })
+    console.error('Error handling staff queue action:', error)
+    res.status(500).json({ error: 'Failed to perform queue action' })
   }
 })
 
@@ -782,8 +828,8 @@ app.post('/api/admin/serve', checkAuth, async (req, res) => {
           ),
         )
 
-      // Get next waiting
-      const waiting = await db
+      // Get next waiting - PRIORITY: Golden tickets with successful payment first
+      let waiting = await db
         .select({
           id: queueEntries.id,
           name: queueEntries.name,
@@ -793,16 +839,48 @@ app.post('/api/admin/serve', checkAuth, async (req, res) => {
           status: queueEntries.status,
           createdAt: queueEntries.createdAt,
           servedAt: queueEntries.servedAt,
+          isGolden: queueEntries.isGolden,
+          goldenTicketRef: queueEntries.goldenTicketRef,
+          mpesaStatus: queueEntries.mpesaStatus,
         })
         .from(queueEntries)
         .where(
           and(
             eq(queueEntries.serviceType, serviceType),
             eq(queueEntries.status, 'waiting'),
+            eq(queueEntries.isGolden, true),
+            eq(queueEntries.mpesaStatus, 'success'),
           ),
         )
-        .orderBy(asc(queueEntries.queueNumber))
+        .orderBy(asc(queueEntries.createdAt))
         .limit(1)
+
+      // If no golden tickets, get regular waiting entry
+      if (waiting.length === 0) {
+        waiting = await db
+          .select({
+            id: queueEntries.id,
+            name: queueEntries.name,
+            studentId: queueEntries.studentId,
+            serviceType: queueEntries.serviceType,
+            queueNumber: queueEntries.queueNumber,
+            status: queueEntries.status,
+            createdAt: queueEntries.createdAt,
+            servedAt: queueEntries.servedAt,
+            isGolden: queueEntries.isGolden,
+            goldenTicketRef: queueEntries.goldenTicketRef,
+            mpesaStatus: queueEntries.mpesaStatus,
+          })
+          .from(queueEntries)
+          .where(
+            and(
+              eq(queueEntries.serviceType, serviceType),
+              eq(queueEntries.status, 'waiting'),
+            ),
+          )
+          .orderBy(asc(queueEntries.queueNumber))
+          .limit(1)
+      }
 
       if (waiting.length === 0) {
         console.log('â¹ï¸  No more entries in queue for service:', serviceType)
@@ -815,8 +893,12 @@ app.post('/api/admin/serve', checkAuth, async (req, res) => {
         .where(eq(queueEntries.id, waiting[0].id))
         .returning()
 
-      console.log('âœ… Serving next ticket:', updated[0])
-      res.json(updated[0])
+      const ticketLabel = updated[0].isGolden && updated[0].mpesaStatus === 'success' 
+        ? `${updated[0].queueNumber}✨ (GOLDEN TICKET)` 
+        : updated[0].queueNumber.toString()
+
+      console.log('Serving next ticket:', updated[0], '- Label:', ticketLabel)
+      res.json({ ...updated[0], ticketLabel })
     } else if (action === 'complete' && entryId) {
       const updated = await db
         .update(queueEntries)
@@ -840,10 +922,8 @@ app.post('/api/admin/serve', checkAuth, async (req, res) => {
       res.status(400).json({ error: 'Invalid action' })
     }
   } catch (error) {
-    console.error('ERROR in queue action (', action, '):')
-    console.error('  Message:', error.message)
-    console.error('  Code:', error.code)
-    console.error('  Stack:', error.stack)
+    console.error('âŒ Error serving queue:', error.message)
+    console.error('ðŸ“‹ Stack trace:', error.stack)
     res.status(500).json({ error: 'Internal server error', details: error.message })
   }
 })
@@ -872,11 +952,8 @@ app.get('/api/admin/report', checkAuth, async (req, res) => {
 
     res.json(served)
   } catch (error) {
-    console.error('ERROR fetching admin report:')
-    console.error('  Message:', error.message)
-    console.error('  Code:', error.code)
-    console.error('  Stack:', error.stack)
-    res.status(500).json({ error: 'Internal server error', details: error.message })
+    console.error('Error fetching report:', error)
+    res.status(500).json({ error: 'Internal server error' })
   }
 })
 
@@ -901,76 +978,6 @@ app.get('/api/debug', (req, res) => {
     indexHtmlExists: NODE_ENV === 'production' ? require('fs').existsSync(path.join(__dirname, 'dist', 'index.html')) : 'N/A',
     apiEndpointsWorking: true,
   })
-})
-
-// GET /api/db-status - Comprehensive database diagnostics
-app.get('/api/db-status', async (req, res) => {
-  try {
-    if (!db) {
-      return res.status(503).json({ 
-        status: 'error',
-        message: 'Database not connected',
-        dbConnected: false
-      })
-    }
-
-    const status = {
-      dbConnected: true,
-      tables: {},
-      timestamp: new Date().toISOString(),
-      environment: NODE_ENV
-    }
-
-    // Check each table
-    try {
-      const officesCount = await db.select({ count: sql`count(*)::int` }).from(offices)
-      status.tables.offices = {
-        exists: true,
-        count: officesCount[0]?.count ?? 0,
-        sample: null
-      }
-      if ((officesCount[0]?.count ?? 0) > 0) {
-        const sample = await db.select({
-          id: offices.id,
-          name: offices.name,
-          serviceType: offices.serviceType,
-        }).from(offices).limit(1)
-        status.tables.offices.sample = sample[0] || null
-      }
-    } catch (err) {
-      status.tables.offices = { exists: false, error: err.message }
-    }
-
-    try {
-      const queueCount = await db.select({ count: sql`count(*)::int` }).from(queueEntries)
-      status.tables.queueEntries = {
-        exists: true,
-        count: queueCount[0]?.count ?? 0
-      }
-    } catch (err) {
-      status.tables.queueEntries = { exists: false, error: err.message }
-    }
-
-    try {
-      const staffCount = await db.select({ count: sql`count(*)::int` }).from(staffAccounts)
-      status.tables.staffAccounts = {
-        exists: true,
-        count: staffCount[0]?.count ?? 0
-      }
-    } catch (err) {
-      status.tables.staffAccounts = { exists: false, error: err.message }
-    }
-
-    res.json(status)
-  } catch (error) {
-    console.error('ERROR checking database status:')
-    console.error('  Message:', error.message)
-    console.error('  Stack:', error.stack)
-    res.status(500).json({ 
-      error: 'Database status check failed',
-      details: error.message
-    })
-  }
 })
 
 // SPA fallback - serve index.html for all unknown routes (both dev and production)
@@ -1032,6 +1039,39 @@ async function startServer() {
         console.error('â³ Reconnection attempt failed:', e.message, '(will retry in 10 seconds)')
       }
     }, 10000) // Try every 10 seconds instead of 30
+  }
+}
+
+// Diagnostic function to check database tables on startup
+async function runStartupDiagnostics() {
+  if (!db) return
+  
+  try {
+    console.log('\n📊 Database Startup Diagnostics:')
+    
+    const tables = [
+      { name: 'offices', table: offices },
+      { name: 'queue_entries', table: queueEntries },
+      { name: 'staff_accounts', table: staffAccounts }
+    ]
+    
+    for (const { name, table } of tables) {
+      try {
+        const result = await db.select({ count: dbCount() }).from(table)
+        const rowCount = result[0]?.count ?? 0
+        console.log(`  ✓ ${name}: ${rowCount} rows`)
+        
+        // Extra check: if offices table is empty, warn about it
+        if (name === 'offices' && rowCount === 0) {
+          console.warn(`  ⚠️  WARNING: offices table is empty! API will fail without office data.`)
+        }
+      } catch (err) {
+        console.error(`  ✗ ${name}: TABLE NOT FOUND or ERROR - ${err.message}`)
+      }
+    }
+    console.log('')
+  } catch (err) {
+    console.error('⚠️  Could not run startup diagnostics:', err.message)
   }
 }
 

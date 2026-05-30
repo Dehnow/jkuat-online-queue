@@ -32,6 +32,8 @@ type WaitingListEntry = {
   office: string
   waitTime: number
   createdAt: string
+  isGolden?: boolean
+  mpesaStatus?: string
 }
 
 // Helper: generate ticket number (e.g., REG240518)
@@ -483,23 +485,38 @@ export default function AdminPage() {
                           <th className="p-2 text-left">Student / Client</th>
                           <th className="p-2 text-left">Office</th>
                           <th className="p-2 text-left">Wait Time</th>
+                          <th className="p-2 text-center">Priority</th>
                         </tr>
                       </thead>
                       <tbody>
                         {waitingList.length === 0 ? (
                           <tr>
-                            <td colSpan={5} className="p-4 text-center text-gray-400">No one waiting in this queue</td>
+                            <td colSpan={6} className="p-4 text-center text-gray-400">No one waiting in this queue</td>
                           </tr>
                         ) : (
                           waitingList.slice(0, 5).map((item, idx) => (
-                            <tr key={item.id} className="border-t">
+                            <tr key={item.id} className={`border-t ${item.isGolden && item.mpesaStatus === 'success' ? 'bg-yellow-50' : ''}`}>
                               <td className="p-2 text-gray-400">{idx+1}</td>
-                              <td className="p-2 font-mono font-bold">{item.ticketNumber}</td>
+                              <td className="p-2 font-mono font-bold">
+                                <span>{item.ticketNumber}</span>
+                                {item.isGolden && item.mpesaStatus === 'success' && (
+                                  <span className="ml-2 text-yellow-600">✨</span>
+                                )}
+                              </td>
                               <td className="p-2">{item.name}</td>
                               <td className="p-2">{item.office}</td>
                               <td className="p-2 flex items-center gap-1">
                                 <svg className="w-4 h-4 text-green-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
                                 {item.waitTime} mins
+                              </td>
+                              <td className="p-2 text-center">
+                                {item.isGolden ? (
+                                  <span className="inline-block px-2 py-1 rounded-full text-xs font-bold bg-yellow-200 text-yellow-900">
+                                    {item.mpesaStatus === 'success' ? '🥇 Gold' : '⏳ Pending'}
+                                  </span>
+                                ) : (
+                                  <span className="text-gray-400 text-xs">Regular</span>
+                                )}
                               </td>
                             </tr>
                           ))

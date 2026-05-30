@@ -20,7 +20,8 @@ export async function GET(request: Request, { params }: { params: { id: string }
       return json({ error: 'Queue entry not found' }, { status: 404 })
     }
 
-    // Count how many are ahead in queue
+    // Count how many are ahead in queue (for non-golden tickets)
+    // Golden tickets don't count towards wait time if payment is pending
     const aheadCount = await db.query.queueEntries.findMany({
       where: and(
         eq(queueEntries.serviceType, entry.serviceType),
@@ -50,6 +51,11 @@ export async function GET(request: Request, { params }: { params: { id: string }
       aheadOfYou: aheadCount.length,
       nowServing: serving?.queueNumber || null,
       estimatedWaitTime: Math.ceil((aheadCount.length * 5) / 60),
+      // Golden ticket info
+      isGolden: entry.isGolden,
+      goldenTicketRef: entry.goldenTicketRef,
+      mpesaStatus: entry.mpesaStatus,
+      mpesaPaidAt: entry.mpesaPaidAt,
     })
   } catch (error) {
     console.error('Queue GET/:id error:', error)

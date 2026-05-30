@@ -1,3 +1,4 @@
+import 'dotenv/config'
 import postgres from 'postgres'
 import { readdir, readFile, stat } from 'fs/promises'
 import path from 'path'
@@ -8,14 +9,16 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url))
 async function runMigrations() {
   const DATABASE_URL = process.env.DATABASE_URL
   if (!DATABASE_URL) {
-    console.error('❌ DATABASE_URL not set')
+    console.error('❌ FATAL: DATABASE_URL environment variable is not set')
+    console.error('   This is required for database migrations')
     process.exit(1)
   }
 
+  console.log('✓ DATABASE_URL found in environment')
   const client = postgres(DATABASE_URL)
 
   try {
-    console.log('🔄 Running database migrations...')
+    console.log('\n🔄 Running database migrations...')
     console.log('📊 Connecting to database...')
     
     // Test connection
@@ -26,7 +29,7 @@ async function runMigrations() {
     const migrationsDir = path.join(__dirname, '../drizzle')
     const items = await readdir(migrationsDir)
     
-    console.log(`📁 Found ${items.length} items in migrations directory`)
+    console.log(`📁 Found ${items.length} items in migrations directory\n`)
     
     let executedCount = 0
     let skippedCount = 0
@@ -74,7 +77,7 @@ async function runMigrations() {
                   err.message.includes('duplicate key') ||
                   err.message.includes('duplicate') ||
                   (err.message.includes('relation') && err.message.includes('already exists'))) {
-                console.log(`    ℹ️  Already exists (skipped)`)
+                // Silent skip for already-exists
               } else if (err.message.includes('ENOENT') || err.message.includes('no such file')) {
                 console.log(`    ℹ️  File not found (skipped)`)
               } else {
@@ -83,12 +86,12 @@ async function runMigrations() {
               }
             }
           }
-          console.log(`    ✓ Executed ${statementCount} statements`)
+          console.log(`    ✓ Successfully executed ${statementCount} statements`)
           executedCount++
         }
       } catch (err) {
         if (!err.message.includes('ENOENT')) {
-          console.error(`  ❌ Migration ${item} failed:`, err.message)
+          console.error(`\n❌ FATAL: Migration ${item} failed:`, err.message)
           throw err
         } else {
           console.log(`  ⊘ Skipping ${item} (file not found)`)
@@ -97,17 +100,22 @@ async function runMigrations() {
       }
     }
     
-    console.log(`\n✓ Migrations completed successfully`)
-    console.log(`  - Executed: ${executedCount}`)
-    console.log(`  - Skipped: ${skippedCount}`)
+    console.log(`\n✓ All migrations completed successfully`)
+    console.log(`  - Executed: ${executedCount} migrations`)
+    console.log(`  - Skipped: ${skippedCount} items`)
     
     await client.end()
     process.exit(0)
   } catch (error) {
-    console.error('❌ Migration error:', error.message)
+    console.error('\n❌ FATAL Migration Error:', error.message)
+    console.error('Stack:', error.stack)
     await client.end()
     process.exit(1)
   }
 }
+
+console.log('\n=== Database Migration Script Started ===')
+console.log(`Environment: ${process.env.NODE_ENV || 'not set'}`)
+console.log(`Time: ${new Date().toISOString()}\n`)
 
 runMigrations()

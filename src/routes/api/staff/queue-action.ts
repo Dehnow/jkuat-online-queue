@@ -1,7 +1,7 @@
 import { json } from '@tanstack/start'
 import { db } from '../../../db/index'
 import { queueEntries } from '../../../db/schema'
-import { eq, and } from 'drizzle-orm'
+import { eq, and, desc } from 'drizzle-orm'
 
 export async function POST(request: Request) {
   try {
@@ -22,19 +22,36 @@ export async function POST(request: Request) {
 
     switch (action) {
       case 'call_next': {
-        // Get next waiting entry
-        const nextEntry = await db.query.queueEntries.findFirst({
+        // Priority: Golden tickets with successful payment first
+        let nextEntry = await db.query.queueEntries.findFirst({
           where: and(
             eq(queueEntries.officeId, officeId),
-            eq(queueEntries.status, 'waiting')
+            eq(queueEntries.status, 'waiting'),
+            eq(queueEntries.isGolden, true),
+            eq(queueEntries.mpesaStatus, 'success')
           ),
         })
+
+        // If no golden tickets, get regular waiting entry
+        if (!nextEntry) {
+          nextEntry = await db.query.queueEntries.findFirst({
+            where: and(
+              eq(queueEntries.officeId, officeId),
+              eq(queueEntries.status, 'waiting'),
+              eq(queueEntries.isGolden, false)
+            ),
+          })
+        }
 
         if (nextEntry) {
           // Update to serving
           await db.update(queueEntries)
             .set({ status: 'serving' })
             .where(eq(queueEntries.id, nextEntry.id))
+
+          const ticketLabel = nextEntry.isGolden && nextEntry.mpesaStatus === 'success' 
+            ? `${nextEntry.queueNumber} ✨ (GOLDEN TICKET)` 
+            : nextEntry.queueNumber.toString()
 
           return json({
             success: true,
@@ -44,8 +61,11 @@ export async function POST(request: Request) {
               name: nextEntry.name,
               queueNumber: nextEntry.queueNumber,
               status: 'serving',
+              isGolden: nextEntry.isGolden,
+              goldenTicketRef: nextEntry.goldenTicketRef,
             },
-            message: 'Calling next customer',
+            message: nextEntry.isGolden ? 'Calling golden ticket holder 🎫' : 'Calling next customer',
+            ticketLabel,
           })
         }
         return json({ error: 'No waiting customers' }, { status: 404 })
@@ -79,6 +99,11 @@ export async function POST(request: Request) {
 
       case 'cancel': {
         // Update status to cancelled
+        // Note: Cancelled golden tickets should still be tracked for refund/records
+        const willCancel = await db.query.queueEntries.findFirst({
+          where: eq(queueEntries.id, queueId),
+        })
+
         await db.update(queueEntries)
           .set({ status: 'cancelled' })
           .where(eq(queueEntries.id, queueId))
@@ -86,7 +111,7 @@ export async function POST(request: Request) {
         return json({
           success: true,
           action: 'cancel',
-          message: 'Ticket cancelled',
+          message: willCancel?.isGolden ? 'Golden ticket cancelled (may be eligible for refund)' : 'Ticket cancelled',
         })
       }
 

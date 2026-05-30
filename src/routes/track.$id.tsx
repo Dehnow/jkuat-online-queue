@@ -23,6 +23,10 @@ type QueueEntry = {
   createdAt: string
   waitingAhead: number
   currentlyServing: number | null
+  isGolden?: boolean
+  goldenTicketRef?: string
+  mpesaStatus?: string
+  mpesaPaidAt?: string
 }
 
 export default function TrackPage() {
@@ -30,6 +34,10 @@ export default function TrackPage() {
   const [entry, setEntry] = useState<QueueEntry | null>(null)
   const [error, setError] = useState('')
   const [notified, setNotified] = useState(false)
+  const [showGoldenFlow, setShowGoldenFlow] = useState(false)
+  const [paymentPhone, setPaymentPhone] = useState('')
+  const [paymentLoading, setPaymentLoading] = useState(false)
+  const [paymentMessage, setPaymentMessage] = useState('')
   const prevStatus = useRef<string | null>(null)
 
   useEffect(() => {
@@ -44,7 +52,10 @@ export default function TrackPage() {
           setNotified(true)
           // Browser notification
           if ('Notification' in window && Notification.permission === 'granted') {
-            new Notification('🎉 Your Turn!', {
+            const msg = data.isGolden && data.mpesaStatus === 'success'
+              ? '🎫 Golden Ticket Called! Your turn is here!'
+              : '🎉 Your Turn!'
+            new Notification(msg, {
               body: `Queue #${data.queueNumber} — Please proceed to ${SERVICE_LABELS[data.serviceType]}`,
               icon: '/queue-bg.jpeg',
             })
@@ -79,6 +90,66 @@ export default function TrackPage() {
       Notification.requestPermission()
     }
   }, [])
+
+  const handleMakeGolden = async () => {
+    try {
+      setPaymentLoading(true)
+      setPaymentMessage('')
+      const res = await fetch('/api/queue/golden-ticket', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ queueId: id, action: 'mark-golden' }),
+      })
+      const data = await res.json()
+
+      if (!res.ok) {
+        setPaymentMessage(`Error: ${data.error}`)
+        return
+      }
+
+      setPaymentMessage('✅ Golden ticket activated! Ready for payment.')
+    } catch (err) {
+      setPaymentMessage('Error activating golden ticket')
+      console.error(err)
+    } finally {
+      setPaymentLoading(false)
+    }
+  }
+
+  const handleInitiatePayment = async () => {
+    if (!paymentPhone.trim()) {
+      setPaymentMessage('Please enter your phone number')
+      return
+    }
+
+    try {
+      setPaymentLoading(true)
+      const res = await fetch('/api/queue/mpesa', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: 'initiate-payment',
+          queueId: id,
+          phoneNumber: paymentPhone,
+          amount: 50,
+          goldenRef: entry?.goldenTicketRef,
+        }),
+      })
+      const data = await res.json()
+
+      if (!res.ok) {
+        setPaymentMessage(`Payment Error: ${data.error}`)
+        return
+      }
+
+      setPaymentMessage('📱 M-PESA prompt sent! Check your phone and enter your M-PESA PIN.')
+    } catch (err) {
+      setPaymentMessage('Error initiating payment')
+      console.error(err)
+    } finally {
+      setPaymentLoading(false)
+    }
+  }
 
   if (error) return (
     <div className="min-h-screen flex items-center justify-center px-4">
@@ -159,9 +230,41 @@ export default function TrackPage() {
                 {entry.currentlyServing && (
                   <InfoRow icon="▶️" label="Currently Serving" value={`#${entry.currentlyServing}`} />
                 )}
-                <div className="rounded-xl px-4 py-3 mt-2 text-xs text-center font-medium" style={{ background: 'rgba(26,48,96,0.07)', color: 'var(--navy)' }}>
-                  Please wait — you will be notified when your turn arrives
-                </div>
+
+                {/* Golden Ticket Status */}
+                {entry.isGolden ? (
+                  <div className="mt-4 space-y-3">
+                    <div className="rounded-xl px-4 py-3 bg-yellow-50 border-2 border-yellow-400">
+                      <div className="text-sm font-bold text-yellow-900 flex items-center gap-2 mb-1">
+                        <span>✨</span> Golden Ticket Activated
+                      </div>
+                      <div className="text-xs text-yellow-800">
+                        Ref: <span className="font-mono font-bold">{entry.goldenTicketRef}</span>
+                      </div>
+                      {entry.mpesaStatus === 'pending' && (
+                        <div className="text-xs text-yellow-700 mt-2">Payment Status: Awaiting confirmation...</div>
+                      )}
+                      {entry.mpesaStatus === 'success' && (
+                        <div className="text-xs text-green-700 mt-2">✅ Payment confirmed! You're next in priority queue.</div>
+                      )}
+                    </div>
+                  </div>
+                ) : (
+                  <div className="rounded-xl px-4 py-3 mt-2 text-xs text-center font-medium" style={{ background: 'rgba(26,48,96,0.07)', color: 'var(--navy)' }}>
+                    Please wait — you will be notified when your turn arrives
+                  </div>
+                )}
+
+                {/* Golden Ticket Button */}
+                {!entry.isGolden && !showGoldenFlow && (
+                  <button
+                    onClick={() => setShowGoldenFlow(true)}
+                    className="w-full mt-3 px-4 py-3 rounded-xl font-bold text-sm text-white transition-all duration-200 hover:shadow-lg"
+                    style={{ background: 'linear-gradient(135deg, #c8a000, #e6b800)' }}
+                  >
+                    ✨ Upgrade to Golden Ticket (KES 50)
+                  </button>
+                )}
               </>
             )}
             {entry.status === 'serving' && (
@@ -189,6 +292,99 @@ export default function TrackPage() {
             Auto-refreshing every 5 seconds
           </div>
         </div>
+
+        {/* Golden Ticket Flow Modal */}
+        {showGoldenFlow && (
+          <div className="glass rounded-2xl shadow-2xl w-full max-w-md p-7 mt-5 animate-slide-in border-2 border-yellow-400">
+            <div className="flex items-center justify-between mb-5">
+              <h2 className="text-lg font-bold flex items-center gap-2" style={{ color: 'var(--navy)' }}>
+                <span>✨</span> Golden Ticket
+              </h2>
+              <button
+                onClick={() => {
+                  setShowGoldenFlow(false)
+                  setPaymentMessage('')
+                  setPaymentPhone('')
+                }}
+                className="text-gray-400 hover:text-gray-600 text-lg"
+              >
+                ✕
+              </button>
+            </div>
+
+            <div className="space-y-4">
+              <div className="bg-yellow-50 rounded-xl p-4 text-sm">
+                <div className="font-bold text-yellow-900 mb-2">How it works:</div>
+                <ul className="text-yellow-800 space-y-1 text-xs">
+                  <li>✓ Your ticket won't be cancelled even if you're late</li>
+                  <li>✓ Pay KES 50 via M-PESA</li>
+                  <li>✓ Get moved to the front of the queue</li>
+                  <li>✓ New ticket: #{entry?.queueNumber}✨ + unique reference</li>
+                </ul>
+              </div>
+
+              {!entry?.isGolden ? (
+                <>
+                  <button
+                    onClick={handleMakeGolden}
+                    disabled={paymentLoading}
+                    className="w-full px-4 py-3 rounded-xl font-bold text-sm text-white bg-green-600 hover:bg-green-700 disabled:opacity-50 transition-colors"
+                  >
+                    {paymentLoading ? '⏳ Processing...' : '✨ Activate Golden Ticket'}
+                  </button>
+                  {paymentMessage && (
+                    <div className={`text-xs p-3 rounded-lg ${
+                      paymentMessage.includes('Error') || paymentMessage.includes('Error')
+                        ? 'bg-red-50 text-red-700'
+                        : 'bg-green-50 text-green-700'
+                    }`}>
+                      {paymentMessage}
+                    </div>
+                  )}
+                </>
+              ) : entry?.mpesaStatus !== 'success' ? (
+                <>
+                  <div className="text-sm font-semibold" style={{ color: 'var(--navy)' }}>
+                    Phone Number (M-PESA):
+                  </div>
+                  <input
+                    type="tel"
+                    placeholder="254712345678 or 0712345678"
+                    value={paymentPhone}
+                    onChange={(e) => setPaymentPhone(e.target.value)}
+                    disabled={paymentLoading}
+                    className="w-full px-4 py-2 border-2 rounded-lg font-mono text-sm disabled:opacity-50"
+                    style={{ borderColor: 'var(--green-dark)' }}
+                  />
+                  <button
+                    onClick={handleInitiatePayment}
+                    disabled={paymentLoading || !paymentPhone.trim()}
+                    className="w-full px-4 py-3 rounded-xl font-bold text-sm text-white bg-blue-600 hover:bg-blue-700 disabled:opacity-50 transition-colors"
+                  >
+                    {paymentLoading ? '⏳ Sending M-PESA Prompt...' : '💳 Pay with M-PESA'}
+                  </button>
+                  {paymentMessage && (
+                    <div className={`text-xs p-3 rounded-lg ${
+                      paymentMessage.includes('Error')
+                        ? 'bg-red-50 text-red-700'
+                        : 'bg-blue-50 text-blue-700'
+                    }`}>
+                      {paymentMessage}
+                    </div>
+                  )}
+                </>
+              ) : (
+                <div className="bg-green-50 rounded-xl p-4 text-center">
+                  <div className="text-2xl mb-2">✅</div>
+                  <div className="text-sm font-bold text-green-900">Payment Confirmed!</div>
+                  <div className="text-xs text-green-800 mt-2">
+                    You are now prioritized in the queue. Your Golden Ticket: <span className="font-mono">{entry?.goldenTicketRef}</span>
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+        )}
 
         <Link to="/" className="mt-5 text-white text-xs font-semibold px-4 py-2 rounded-lg hover:bg-white/10 transition-colors">
           ← Back to Home
