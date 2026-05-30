@@ -4,11 +4,17 @@ import { queueEntries } from '../../../db/schema'
 import { eq } from 'drizzle-orm'
 
 // M-PESA Configuration
-const MPESA_CONSUMER_KEY = process.env.MPESA_CONSUMER_KEY || ''
-const MPESA_CONSUMER_SECRET = process.env.MPESA_CONSUMER_SECRET || ''
-const MPESA_BUSINESS_SHORTCODE = process.env.MPESA_SHORTCODE || '174379'
-const MPESA_PASSKEY = process.env.MPESA_PASSKEY || ''
-const MPESA_CALLBACK_URL = process.env.MPESA_CALLBACK_URL || 'https://jkuat-queue.netlify.app/api/queue/mpesa-callback'
+// NOTE: Environment variables use these exact names in Render:
+// - CONSUMER_KEY (not MPESA_CONSUMER_KEY)
+// - CONSUMER_SECRET (not MPESA_CONSUMER_SECRET)
+// - PASSKEY (not MPESA_PASSKEY)
+// - SHORTCODE (not MPESA_SHORTCODE)
+// - CALLBACK_URL (not MPESA_CALLBACK_URL)
+const MPESA_CONSUMER_KEY = process.env.CONSUMER_KEY || process.env.MPESA_CONSUMER_KEY || ''
+const MPESA_CONSUMER_SECRET = process.env.CONSUMER_SECRET || process.env.MPESA_CONSUMER_SECRET || ''
+const MPESA_BUSINESS_SHORTCODE = process.env.SHORTCODE || process.env.MPESA_SHORTCODE || '174379'
+const MPESA_PASSKEY = process.env.PASSKEY || process.env.MPESA_PASSKEY || ''
+const MPESA_CALLBACK_URL = process.env.CALLBACK_URL || process.env.MPESA_CALLBACK_URL || 'https://jkuat-online-queue.onrender.com/api/queue/mpesa-callback'
 
 // Sandbox credentials for testing (optional)
 const SANDBOX_MODE = process.env.NODE_ENV !== 'production' || process.env.MPESA_SANDBOX === 'true'

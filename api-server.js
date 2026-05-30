@@ -41,12 +41,24 @@ if (NODE_ENV === 'production') {
 
 // M-Pesa Configuration
 // IMPORTANT: Set MPESA_SANDBOX=false in Render environment to enable real M-Pesa STK prompts
+// NOTE: Environment variables use these exact names in Render:
+// - CONSUMER_KEY (not MPESA_CONSUMER_KEY)
+// - CONSUMER_SECRET (not MPESA_CONSUMER_SECRET)
+// - PASSKEY (not MPESA_PASSKEY)
+// - SHORTCODE (not MPESA_SHORTCODE)
+// - CALLBACK_URL (not MPESA_CALLBACK_URL)
+
+const SANDBOX_CONSUMER_KEY = '4PvGSK0r7RiNmZkjnEwYlQ2xAzB8sD3qF5gH6tJ9oP1u2v'
+const SANDBOX_CONSUMER_SECRET = 'wX3yZ9lM5kJ8nB2vC7pDqRsT4uFgH6jK9oL1mN3pQ4rS5tU'
+const SANDBOX_PASSKEY = 'bfb279f9ba9b9d1380007480bbe7f27425e1aa6d4ede3891ec337007a74ff42'
+
 const MPESA_CONFIG = {
   isSandbox: process.env.MPESA_SANDBOX !== 'false',  // Default: true (sandbox). Set to 'false' for production
-  consumerKey: process.env.CONSUMER_KEY || process.env.MPESA_CONSUMER_KEY || 'YLPydMh4xhirGrux1cdHyqKRCE3BzinLxdlzed4s88XyiRnu',
-  consumerSecret: process.env.CONSUMER_SECRET || process.env.MPESA_CONSUMER_SECRET || 'RuAadmSxyhwAqjk1GqEwW3vyoDtbCD0nByXAHR7GZw0COLoxSI6u0AKa91wSL4uw',
-  passkey: process.env.PASSKEY || process.env.MPESA_PASSKEY || 'bfb279f9aa9bdbcf158e97dd71a467cd2e0c893059b10f78e6b72ada1ed2c919',
-  tillNumber: process.env.SHORTCODE || process.env.MPESA_TILL_NUMBER || '174379',
+  // Check Render environment variable names first, then MPESA_ prefixed, then sandbox defaults
+  consumerKey: process.env.CONSUMER_KEY || process.env.MPESA_CONSUMER_KEY || SANDBOX_CONSUMER_KEY,
+  consumerSecret: process.env.CONSUMER_SECRET || process.env.MPESA_CONSUMER_SECRET || SANDBOX_CONSUMER_SECRET,
+  passkey: process.env.PASSKEY || process.env.MPESA_PASSKEY || SANDBOX_PASSKEY,
+  tillNumber: process.env.SHORTCODE || process.env.MPESA_SHORTCODE || process.env.MPESA_TILL_NUMBER || '174379',
   // IMPORTANT: M-Pesa requires the public URL for callbacks. In Render, must be HTTPS.
   callbackUrl: process.env.CALLBACK_URL || process.env.MPESA_CALLBACK_URL || (NODE_ENV === 'production' 
     ? 'https://jkuat-online-queue.onrender.com/api/queue/mpesa-callback'
@@ -54,7 +66,12 @@ const MPESA_CONFIG = {
 }
 
 console.log(`INFO M-Pesa Mode: ${MPESA_CONFIG.isSandbox ? 'SANDBOX 🧪 (simulated payments)' : 'PRODUCTION 🚀 (real M-Pesa)'}`)
+console.log(`INFO Environment: ${NODE_ENV === 'production' ? 'PRODUCTION (Render)' : 'DEVELOPMENT'}`)
 console.log(`INFO Callback URL: ${MPESA_CONFIG.callbackUrl}`)
+console.log(`INFO Consumer Key configured: ${MPESA_CONFIG.consumerKey ? '✓ Yes (from ' + (process.env.CONSUMER_KEY ? 'CONSUMER_KEY' : process.env.MPESA_CONSUMER_KEY ? 'MPESA_CONSUMER_KEY' : 'sandbox') + ')' : '✗ No'}`)
+console.log(`INFO Consumer Secret configured: ${MPESA_CONFIG.consumerSecret ? '✓ Yes (from ' + (process.env.CONSUMER_SECRET ? 'CONSUMER_SECRET' : process.env.MPESA_CONSUMER_SECRET ? 'MPESA_CONSUMER_SECRET' : 'sandbox') + ')' : '✗ No'}`)
+console.log(`INFO Passkey configured: ${MPESA_CONFIG.passkey ? '✓ Yes (from ' + (process.env.PASSKEY ? 'PASSKEY' : process.env.MPESA_PASSKEY ? 'MPESA_PASSKEY' : 'sandbox') + ')' : '✗ No'}`)
+console.log(`INFO Till Number: ${MPESA_CONFIG.tillNumber}`)
 
 // Schema
 const statusEnum = pgEnum('queue_status', ['waiting', 'serving', 'served', 'cancelled'])
@@ -1102,11 +1119,21 @@ app.post('/api/queue/:id/mpesa-pay', async (req, res) => {
     } else {
       // Production: Call actual M-Pesa Daraja API for STK Push
       try {
+        // Validate credentials are configured
+        if (!MPESA_CONFIG.consumerKey || !MPESA_CONFIG.consumerSecret) {
+          console.error('ERROR M-Pesa credentials not configured. Check these environment variables:')
+          console.error('  - CONSUMER_KEY (or MPESA_CONSUMER_KEY)')
+          console.error('  - CONSUMER_SECRET (or MPESA_CONSUMER_SECRET)')
+          throw new Error('M-Pesa credentials not configured. Please set CONSUMER_KEY and CONSUMER_SECRET environment variables in Render.')
+        }
+
         // Get OAuth token from Daraja
         const authUrl = 'https://api.safaricom.co.ke/oauth/v1/generate?grant_type=client_credentials'
         const auth = Buffer.from(
           `${MPESA_CONFIG.consumerKey}:${MPESA_CONFIG.consumerSecret}`
         ).toString('base64')
+
+        console.log(`DEBUG Token request with auth header (first 20 chars): ${auth.substring(0, 20)}...`)
 
         const tokenResponse = await fetch(authUrl, {
           method: 'GET',
@@ -1117,15 +1144,19 @@ app.post('/api/queue/:id/mpesa-pay', async (req, res) => {
           timeout: 10000
         })
 
+        const tokenData = await tokenResponse.json()
+        
         if (!tokenResponse.ok) {
-          throw new Error(`Token request failed: ${tokenResponse.statusText}`)
+          const errorMsg = tokenData?.error_description || tokenData?.error || tokenResponse.statusText
+          console.error(`ERROR Token request failed (${tokenResponse.status}): ${errorMsg}`)
+          throw new Error(`Token request failed: ${errorMsg}`)
         }
 
-        const tokenData = await tokenResponse.json()
         const accessToken = tokenData.access_token
 
         if (!accessToken) {
-          throw new Error('No access token received from Daraja')
+          console.error('ERROR No access token in response. Response:', tokenData)
+          throw new Error('No access token received from Daraja. Invalid credentials or API error.')
         }
 
         // Prepare STK Push request
@@ -1137,19 +1168,33 @@ app.post('/api/queue/:id/mpesa-pay', async (req, res) => {
         const checkoutRequestId = `${id}_${Date.now()}`
         const stkPushUrl = 'https://api.safaricom.co.ke/mpesa/stkpush/v1/processrequest'
 
+        // Format phone number to 254XXXXXXXXX format
+        let phoneNumber = req.body.phoneNumber.replace(/\D/g, '') // Remove all non-digits
+        if (!phoneNumber.startsWith('254')) {
+          // If it starts with 0, replace with 254
+          if (phoneNumber.startsWith('0')) {
+            phoneNumber = '254' + phoneNumber.slice(1)
+          } else if (!phoneNumber.startsWith('254')) {
+            // Otherwise prepend 254
+            phoneNumber = '254' + phoneNumber.slice(-9)
+          }
+        }
+
         const stkPayload = {
           BusinessShortCode: MPESA_CONFIG.tillNumber,
           Password: password,
           Timestamp: timestamp,
           TransactionType: 'CustomerPayBillOnline',
           Amount: 50, // KES 50 for golden ticket
-          PartyA: req.body.phoneNumber.replace(/[^\d]/g, '').slice(-10), // Extract 10-digit number
+          PartyA: phoneNumber, // Full phone number with country code (254XXXXXXXXX)
           PartyB: MPESA_CONFIG.tillNumber,
-          PhoneNumber: req.body.phoneNumber.replace(/[^\d]/g, '').slice(-10),
+          PhoneNumber: phoneNumber, // Full phone number with country code
           CallBackURL: MPESA_CONFIG.callbackUrl,
           AccountReference: goldenTicketRef,
           TransactionDesc: 'Golden Ticket - Priority Queue Access'
         }
+
+        console.log(`DEBUG STK Push Payload - PartyA: ${phoneNumber}, Amount: 50, Callback: ${MPESA_CONFIG.callbackUrl}`)
 
         // Call M-Pesa STK Push
         const stkResponse = await fetch(stkPushUrl, {
@@ -1163,6 +1208,9 @@ app.post('/api/queue/:id/mpesa-pay', async (req, res) => {
         })
 
         const stkData = await stkResponse.json()
+
+        console.log(`DEBUG STK Response Status: ${stkResponse.status}`)
+        console.log(`DEBUG STK Response Data:`, stkData)
 
         if (stkData.ResponseCode === '0' || stkData.errorCode === '0') {
           // STK Push initiated successfully
@@ -1190,14 +1238,16 @@ app.post('/api/queue/:id/mpesa-pay', async (req, res) => {
             sandbox: false,
           })
         } else {
-          throw new Error(`STK Push failed: ${stkData.errorMessage || stkData.ResponseDescription || 'Unknown error'}`)
+          const errorMsg = stkData.errorMessage || stkData.ResponseDescription || JSON.stringify(stkData)
+          console.error(`ERROR STK Push failed: ${errorMsg}`)
+          throw new Error(`STK Push failed: ${errorMsg}`)
         }
       } catch (stkError) {
         console.error('ERROR STK Push error:', stkError.message)
         return res.status(500).json({
           error: 'STK Push failed',
           message: stkError.message || 'Failed to initiate M-Pesa payment',
-          details: NODE_ENV === 'development' ? stkError.message : undefined
+          details: NODE_ENV === 'development' ? stkError.toString() : undefined
         })
       }
     }
