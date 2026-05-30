@@ -1096,10 +1096,6 @@ app.post('/api/queue/:id/mpesa-pay', async (req, res) => {
       // Sandbox: Simulate successful payment
       const checkoutRequestId = `SANDBOX_${id}_${Date.now()}`
       
-      // Mark as golden immediately in sandbox
-      // FIXED: Don't auto-complete. Wait for callback to update status.
-      const checkoutRequestId = `SANDBOX_${id}_${Date.now()}`
-      
       // Set as pending - wait for callback
       await db
         .update(queueEntries)
