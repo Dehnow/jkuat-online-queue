@@ -43,12 +43,12 @@ if (NODE_ENV === 'production') {
 // IMPORTANT: Set MPESA_SANDBOX=false in Render environment to enable real M-Pesa STK prompts
 const MPESA_CONFIG = {
   isSandbox: process.env.MPESA_SANDBOX !== 'false',  // Default: true (sandbox). Set to 'false' for production
-  consumerKey: process.env.MPESA_CONSUMER_KEY || 'YLPydMh4xhirGrux1cdHyqKRCE3BzinLxdlzed4s88XyiRnu',
-  consumerSecret: process.env.MPESA_CONSUMER_SECRET || 'RuAadmSxyhwAqjk1GqEwW3vyoDtbCD0nByXAHR7GZw0COLoxSI6u0AKa91wSL4uw',
-  passkey: process.env.MPESA_PASSKEY || 'bfb279f9aa9bdbcf158e97dd71a467cd2e0c893059b10f78e6b72ada1ed2c919',
-  tillNumber: process.env.MPESA_TILL_NUMBER || '174379',
+  consumerKey: process.env.CONSUMER_KEY || process.env.MPESA_CONSUMER_KEY || 'YLPydMh4xhirGrux1cdHyqKRCE3BzinLxdlzed4s88XyiRnu',
+  consumerSecret: process.env.CONSUMER_SECRET || process.env.MPESA_CONSUMER_SECRET || 'RuAadmSxyhwAqjk1GqEwW3vyoDtbCD0nByXAHR7GZw0COLoxSI6u0AKa91wSL4uw',
+  passkey: process.env.PASSKEY || process.env.MPESA_PASSKEY || 'bfb279f9aa9bdbcf158e97dd71a467cd2e0c893059b10f78e6b72ada1ed2c919',
+  tillNumber: process.env.SHORTCODE || process.env.MPESA_TILL_NUMBER || '174379',
   // IMPORTANT: M-Pesa requires the public URL for callbacks. In Render, must be HTTPS.
-  callbackUrl: process.env.MPESA_CALLBACK_URL || (NODE_ENV === 'production' 
+  callbackUrl: process.env.CALLBACK_URL || process.env.MPESA_CALLBACK_URL || (NODE_ENV === 'production' 
     ? 'https://jkuat-online-queue.onrender.com/api/queue/mpesa-callback'
     : 'http://localhost:3000/api/queue/mpesa-callback')
 }
@@ -1045,8 +1045,8 @@ app.post('/api/queue/:id/mpesa-pay', async (req, res) => {
     // Check if already golden
     if (entry.isGolden) {
       return res.status(429).json({ 
-        error: 'Already has golden ticket',
-        message: 'This queue entry already has a golden ticket'
+        error: 'Already upgraded',
+        message: `This ticket is already a Golden Ticket (${entry.goldenTicketRef}). You cannot upgrade it again.`
       })
     }
 

@@ -436,6 +436,20 @@ function StudentDashboard() {
 
       if (!res.ok) {
         const errData = await res.json().catch(() => ({}))
+        
+        // Handle specific error codes
+        if (res.status === 429) {
+          setGoldenError('⚠️ This ticket already has a golden upgrade! You cannot upgrade it twice.')
+          setGoldenLoading(false)
+          return
+        }
+        
+        if (res.status === 400) {
+          setGoldenError(errData.message || 'Invalid input. Please check your details.')
+          setGoldenLoading(false)
+          return
+        }
+        
         throw new Error(errData.message || errData.error || `Error: HTTP ${res.status}`)
       }
 
