@@ -157,6 +157,14 @@ function StudentDashboard() {
   const [ticketHistory, setTicketHistory] = useState<StoredTicket[]>([])
   const [activeTicketCount, setActiveTicketCount] = useState(0)
   const [isRefreshing, setIsRefreshing] = useState(false)
+  // Golden Ticket / M-Pesa states
+  const [showGoldenModal, setShowGoldenModal] = useState(false)
+  const [goldenPhone, setGoldenPhone] = useState('')
+  const [goldenLoading, setGoldenLoading] = useState(false)
+  const [goldenError, setGoldenError] = useState('')
+  const [goldenSuccess, setGoldenSuccess] = useState(false)
+  const [selectedTicketForGolden, setSelectedTicketForGolden] = useState<number | null>(null)
+  const [mpesaStatus, setMpesaStatus] = useState<string | null>(null)
   const queryClient = useQueryClient()
 
   useEffect(() => {
@@ -393,6 +401,88 @@ function StudentDashboard() {
   }
 
   const formatDate = (iso: string) => new Date(iso).toLocaleString()
+  
+  // Golden Ticket Handler
+  const handleUpgradeToGolden = async (ticketId: number) => {
+    setSelectedTicketForGolden(ticketId)
+    setGoldenPhone('')
+    setGoldenError('')
+    setGoldenSuccess(false)
+    setMpesaStatus(null)
+    setShowGoldenModal(true)
+  }
+
+  const handleGoldenPayment = async () => {
+    if (!goldenPhone.trim()) {
+      setGoldenError('Please enter your phone number')
+      return
+    }
+
+    if (!/^[\+]?254\d{9}$/.test(goldenPhone.replace(/\s/g, ''))) {
+      setGoldenError('Invalid phone number. Use format: +254712345678')
+      return
+    }
+
+    setGoldenLoading(true)
+    setGoldenError('')
+
+    try {
+      // Initiate M-Pesa payment
+      const res = await fetch(`/api/queue/${selectedTicketForGolden}/mpesa-pay`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ phoneNumber: goldenPhone })
+      })
+
+      if (!res.ok) {
+        const errData = await res.json().catch(() => ({}))
+        throw new Error(errData.message || errData.error || `Error: HTTP ${res.status}`)
+      }
+
+      const data = await res.json()
+      setMpesaStatus('pending')
+      
+      // Poll status every 3 seconds
+      let attempts = 0
+      const pollInterval = setInterval(async () => {
+        attempts++
+        if (attempts > 40) { // 2 minutes timeout
+          clearInterval(pollInterval)
+          setGoldenLoading(false)
+          setGoldenError('Payment verification timed out. Check your M-Pesa message.')
+          return
+        }
+
+        try {
+          const statusRes = await fetch(`/api/queue/${selectedTicketForGolden}/mpesa-status`)
+          if (statusRes.ok) {
+            const status = await statusRes.json()
+            if (status.mpesaStatus === 'success') {
+              clearInterval(pollInterval)
+              setMpesaStatus('success')
+              setGoldenSuccess(true)
+              setGoldenLoading(false)
+              setTimeout(() => {
+                setShowGoldenModal(false)
+                queryClient.invalidateQueries({ queryKey: ['service-stats'] })
+              }, 2000)
+            } else if (status.mpesaStatus === 'failed') {
+              clearInterval(pollInterval)
+              setMpesaStatus('failed')
+              setGoldenLoading(false)
+              setGoldenError('Payment failed. Please try again.')
+            }
+          }
+        } catch (err) {
+          console.error('Error checking payment status:', err)
+        }
+      }, 3000)
+    } catch (err) {
+      setGoldenError(err instanceof Error ? err.message : 'Network error')
+      setGoldenLoading(false)
+    }
+  }
+
   const getServiceIcon = (service: string) => {
     switch (service) {
       case 'registrar': return <Building2 className="w-6 h-6 text-green-600" />
@@ -611,6 +701,21 @@ function StudentDashboard() {
                     <p className="text-xs text-gray-600 uppercase tracking-wide mb-2">Reference Number</p>
                     <p className="font-mono text-lg font-bold text-gray-800">{getReferenceNumber(lastTicket.id)}</p>
                   </div>
+                  {/* Golden Ticket Upgrade Button */}
+                  <div className="md:col-span-3 flex gap-2">
+                    <button
+                      onClick={() => handleUpgradeToGolden(lastTicket.id)}
+                      className="flex-1 bg-gradient-to-r from-yellow-400 to-yellow-500 hover:from-yellow-500 hover:to-yellow-600 text-white px-4 py-3 rounded-lg font-bold shadow-md transition"
+                    >
+                      ⭐ Upgrade to Golden Ticket (KES 50)
+                    </button>
+                    <button
+                      onClick={() => printTicket(lastTicket)}
+                      className="bg-green-600 hover:bg-green-700 text-white px-4 py-3 rounded-lg font-bold shadow-md transition"
+                    >
+                      🖨️ Print
+                    </button>
+                  </div>
                 </div>
               </div>
             )}
@@ -790,6 +895,149 @@ function StudentDashboard() {
 
               {/* Footer Note */}
               <p className="text-center text-xs text-gray-500 mt-4">JKUAT Digital Queue System • Secure & Encrypted</p>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Golden Ticket M-Pesa Payment Modal */}
+      {showGoldenModal && (
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4 animate-in fade-in duration-300" onClick={() => setShowGoldenModal(false)}>
+          <div className="bg-gradient-to-br from-white to-gray-50 rounded-3xl shadow-2xl max-w-md w-full overflow-hidden animate-cinematic-zoom" onClick={e => e.stopPropagation()}>
+            {/* Header */}
+            <div className="relative bg-gradient-to-r from-yellow-400 to-amber-500 p-6 text-white text-center">
+              <div className="text-4xl mb-2">⭐</div>
+              <h2 className="text-2xl font-black">Golden Ticket</h2>
+              <p className="text-yellow-50 text-sm mt-1">Priority Queue Service</p>
+            </div>
+
+            {/* Content */}
+            <div className="p-6 space-y-4">
+              {/* Success State */}
+              {goldenSuccess && mpesaStatus === 'success' && (
+                <div className="text-center space-y-4">
+                  <div className="text-5xl animate-bounce">✅</div>
+                  <div>
+                    <h3 className="text-lg font-bold text-gray-800">Payment Successful!</h3>
+                    <p className="text-sm text-gray-600 mt-2">Your queue entry has been upgraded to Golden status. You'll be served before regular queue entries.</p>
+                  </div>
+                  <button
+                    onClick={() => setShowGoldenModal(false)}
+                    className="w-full bg-gradient-to-r from-green-600 to-green-500 text-white py-3 rounded-lg font-bold shadow-md hover:shadow-lg transition"
+                  >
+                    Great! Close
+                  </button>
+                </div>
+              )}
+
+              {/* Error State */}
+              {goldenError && !goldenSuccess && (
+                <div className="space-y-3">
+                  <div className="text-center">
+                    <div className="text-4xl mb-2">❌</div>
+                    <h3 className="text-lg font-bold text-red-600">Payment Failed</h3>
+                  </div>
+                  <div className="bg-red-50 border border-red-200 rounded-lg p-3 text-sm text-red-700">
+                    <p className="font-semibold mb-1">Error:</p>
+                    <p>{goldenError}</p>
+                  </div>
+                  <button
+                    onClick={() => {
+                      setGoldenError('')
+                      setMpesaStatus(null)
+                    }}
+                    className="w-full bg-gradient-to-r from-amber-500 to-amber-600 text-white py-3 rounded-lg font-bold shadow-md hover:shadow-lg transition"
+                  >
+                    Try Again
+                  </button>
+                </div>
+              )}
+
+              {/* Loading State */}
+              {goldenLoading && mpesaStatus === 'pending' && !goldenError && (
+                <div className="text-center space-y-4">
+                  <div className="flex justify-center">
+                    <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-yellow-400"></div>
+                  </div>
+                  <div>
+                    <h3 className="text-lg font-bold text-gray-800">Processing Payment...</h3>
+                    <p className="text-sm text-gray-600 mt-2">Check your phone for the M-Pesa prompt. Enter your PIN to complete the payment.</p>
+                    <div className="mt-4 bg-blue-50 border border-blue-200 rounded-lg p-3 text-xs text-blue-700">
+                      <p><strong>📱 What's next:</strong></p>
+                      <p className="mt-1">1. Look for M-Pesa STK prompt on your phone</p>
+                      <p>2. Enter your M-Pesa PIN</p>
+                      <p>3. Wait for confirmation</p>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* Form State (Initial) */}
+              {!goldenLoading && !goldenError && !goldenSuccess && (
+                <form
+                  onSubmit={e => {
+                    e.preventDefault()
+                    handleGoldenPayment()
+                  }}
+                  className="space-y-4"
+                >
+                  {/* Info Card */}
+                  <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-3">
+                    <p className="text-sm text-yellow-800">
+                      <strong>✨ Benefits:</strong><br/>
+                      • Jump to the front of the queue<br/>
+                      • Get served before regular tickets<br/>
+                      • Cost: <span className="font-bold">KES 50</span>
+                    </p>
+                  </div>
+
+                  {/* Phone Input */}
+                  <div>
+                    <label className="block text-xs font-semibold text-gray-600 mb-2">M-Pesa Phone Number</label>
+                    <input
+                      type="tel"
+                      placeholder="+254712345678"
+                      value={goldenPhone}
+                      onChange={e => {
+                        setGoldenPhone(e.target.value)
+                        setGoldenError('')
+                      }}
+                      disabled={goldenLoading}
+                      className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-yellow-400 focus:border-transparent disabled:bg-gray-100"
+                    />
+                    <p className="text-xs text-gray-500 mt-1">Format: +254712345678</p>
+                  </div>
+
+                  {/* Error Alert */}
+                  {goldenError && (
+                    <div className="bg-red-50 border border-red-200 rounded-lg p-3 text-sm text-red-700">
+                      {goldenError}
+                    </div>
+                  )}
+
+                  {/* Buttons */}
+                  <div className="space-y-2">
+                    <button
+                      type="submit"
+                      disabled={goldenLoading}
+                      className="w-full bg-gradient-to-r from-yellow-400 to-amber-500 hover:from-yellow-500 hover:to-amber-600 text-white py-3 rounded-lg font-bold shadow-md hover:shadow-lg transition disabled:opacity-50 disabled:cursor-not-allowed"
+                    >
+                      {goldenLoading ? 'Processing...' : 'Pay KES 50 with M-Pesa'}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setShowGoldenModal(false)}
+                      disabled={goldenLoading}
+                      className="w-full border-2 border-gray-300 text-gray-700 py-2 rounded-lg font-semibold hover:bg-gray-100 transition disabled:opacity-50 disabled:cursor-not-allowed"
+                    >
+                      Cancel
+                    </button>
+                  </div>
+
+                  {/* Footer */}
+                  <p className="text-xs text-center text-gray-500">💳 Secure M-Pesa payment via Safaricom</p>
+                </form>
+              )}
             </div>
           </div>
         </div>

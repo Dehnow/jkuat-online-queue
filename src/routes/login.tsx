@@ -80,7 +80,7 @@ export default function LoginPage() {
     }
   }, [role])
 
-  // Student login (mock – accepts any non‑empty credentials)
+  // Student login - join queue
   const handleStudentLogin = async (e: React.FormEvent) => {
     e.preventDefault()
     setLoading(true)
@@ -90,10 +90,57 @@ export default function LoginPage() {
       setLoading(false)
       return
     }
-    sessionStorage.setItem('studentId', studentUsername.trim())
-    sessionStorage.setItem('studentAuth', btoa(`${studentUsername}:${studentPassword}`))
-    sessionStorage.setItem('userRole', 'student')
-    navigate({ to: '/' })
+
+    // Add timeout to prevent infinite loading
+    const timeoutId = setTimeout(() => {
+      setLoading(false)
+      setError('Request timed out. Please check your connection and try again.')
+    }, 10000)
+
+    try {
+      // Call API to join queue
+      const res = await fetch('/api/queue', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          name: studentUsername.trim(),
+          studentId: studentUsername.trim(),
+          serviceType: 'registrar', // Default service - user can change after login
+        })
+      })
+
+      clearTimeout(timeoutId)
+
+      // Handle all error status codes
+      if (!res.ok) {
+        const errorData = await res.json().catch(() => ({}))
+        const errorMsg = errorData.message || errorData.error || `HTTP ${res.status}`
+
+        if (res.status === 429) {
+          setError('You have reached the maximum of 3 active tickets. Please wait for one to be served.')
+        } else if (res.status >= 500) {
+          setError('Server error. Please try again later.')
+        } else {
+          setError(errorMsg)
+        }
+        setLoading(false)
+        return
+      }
+
+      // Success - save auth and redirect
+      const entry = await res.json()
+      sessionStorage.setItem('studentId', studentUsername.trim())
+      sessionStorage.setItem('studentAuth', btoa(`${studentUsername}:${studentPassword}`))
+      sessionStorage.setItem('userRole', 'student')
+      sessionStorage.setItem('currentTicketId', String(entry.id))
+      navigate({ to: '/' })
+
+    } catch (err) {
+      clearTimeout(timeoutId)
+      console.error('[Student Login Error]', err)
+      setError(err instanceof Error ? err.message : 'Network error. Please try again.')
+      setLoading(false)
+    }
   }
 
   const handleAdminLogin = async (e: React.FormEvent) => {

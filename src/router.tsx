@@ -10,15 +10,20 @@ const rootRoute = new RootRoute({
   component: RootLayout,
 })
 
-// Student dashboard (home page) - now requires login
+// Student dashboard (home page) - requires authentication
 const indexRoute = new Route({
   getParentRoute: () => rootRoute,
   path: '/',
   beforeLoad: () => {
-    // Redirect to login on page load
-    throw redirect({
-      to: '/login',
-    })
+    // Check if user is authenticated
+    const userRole = sessionStorage.getItem('userRole')
+    if (!userRole) {
+      // Not authenticated - redirect to login
+      throw redirect({
+        to: '/login',
+      })
+    }
+    // User is authenticated - allow access to dashboard
   },
   component: StudentDashboard,
 })

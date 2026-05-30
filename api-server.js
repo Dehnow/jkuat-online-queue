@@ -519,11 +519,14 @@ app.get('/api/ticketHistory', async (req, res) => {
       return res.status(400).json({ error: 'Student ID is required', tickets: [] })
     }
 
-    // Get start and end of today
+    // Get start and end of today - use ISO strings for database compatibility
     const today = new Date()
     const startOfDay = new Date(today.getFullYear(), today.getMonth(), today.getDate())
     const endOfDay = new Date(startOfDay)
     endOfDay.setDate(endOfDay.getDate() + 1)
+    
+    const startISO = startOfDay.toISOString()
+    const endISO = endOfDay.toISOString()
 
     const tickets = await db
       .select({
@@ -540,8 +543,8 @@ app.get('/api/ticketHistory', async (req, res) => {
       .where(
         and(
           eq(queueEntries.studentId, studentId),
-          sql`${queueEntries.createdAt} >= ${startOfDay}`,
-          sql`${queueEntries.createdAt} < ${endOfDay}`
+          sql`${queueEntries.createdAt} >= ${startISO}::timestamp`,
+          sql`${queueEntries.createdAt} < ${endISO}::timestamp`
         )
       )
       .orderBy(desc(queueEntries.createdAt))
@@ -960,6 +963,248 @@ app.get('/api/admin/report', checkAuth, async (req, res) => {
   } catch (error) {
     console.error('Error fetching report:', error)
     res.status(500).json({ error: 'Internal server error' })
+  }
+})
+
+// ============= GOLDEN TICKET & M-PESA ENDPOINTS =============
+
+// GET /api/queue/:id/mpesa-status - Check M-Pesa payment status
+app.get('/api/queue/:id/mpesa-status', async (req, res) => {
+  try {
+    if (!db) return res.status(503).json({ error: 'Database not ready' })
+    
+    const { id } = req.params
+    const entry = await db
+      .select({
+        id: queueEntries.id,
+        isGolden: queueEntries.isGolden,
+        mpesaStatus: queueEntries.mpesaStatus,
+        mpesaTransactionId: queueEntries.mpesaTransactionId,
+        mpesaPaidAt: queueEntries.mpesaPaidAt,
+        goldenTicketRef: queueEntries.goldenTicketRef,
+        status: queueEntries.status,
+      })
+      .from(queueEntries)
+      .where(eq(queueEntries.id, Number(id)))
+      .limit(1)
+      .then(rows => rows[0] || null)
+
+    if (!entry) {
+      return res.status(404).json({ error: 'Queue entry not found' })
+    }
+
+    res.json(entry)
+  } catch (error) {
+    console.error('Error checking M-Pesa status:', error)
+    res.status(500).json({ error: 'Internal server error' })
+  }
+})
+
+// POST /api/queue/:id/mpesa-pay - Initiate M-Pesa STK Push
+app.post('/api/queue/:id/mpesa-pay', async (req, res) => {
+  try {
+    if (!db) return res.status(503).json({ error: 'Database not ready' })
+    
+    const { id } = req.params
+    const { phoneNumber } = req.body
+
+    // Validate phone number (Kenya format)
+    if (!phoneNumber || !/^[\+]?254\d{9}$/.test(phoneNumber.replace(/\s/g, ''))) {
+      return res.status(400).json({ error: 'Invalid phone number. Use format: +254712345678' })
+    }
+
+    // Get queue entry
+    const entry = await db
+      .select()
+      .from(queueEntries)
+      .where(eq(queueEntries.id, Number(id)))
+      .limit(1)
+      .then(rows => rows[0] || null)
+
+    if (!entry) {
+      return res.status(404).json({ error: 'Queue entry not found' })
+    }
+
+    // Check if already golden
+    if (entry.isGolden) {
+      return res.status(429).json({ 
+        error: 'Already has golden ticket',
+        message: 'This queue entry already has a golden ticket'
+      })
+    }
+
+    // Check if already served or cancelled
+    if (entry.status === 'served' || entry.status === 'cancelled') {
+      return res.status(400).json({ 
+        error: 'Cannot upgrade',
+        message: `Cannot upgrade a ${entry.status} queue entry`
+      })
+    }
+
+    // Generate golden ticket reference
+    const date = new Date().toISOString().split('T')[0].replace(/-/g, '')
+    const sequence = await db
+      .select({ count: sql`cast(count(*) as integer)` })
+      .from(queueEntries)
+      .where(and(
+        eq(queueEntries.serviceType, entry.serviceType),
+        eq(queueEntries.isGolden, true),
+        sql`DATE(${queueEntries.createdAt}) = CURRENT_DATE`
+      ))
+      .then(rows => (rows[0]?.count ?? 0) + 1)
+
+    const goldenTicketRef = `GT-${entry.serviceType.toUpperCase().substring(0, 3)}-${date}-${String(sequence).padStart(3, '0')}`
+
+    // In sandbox mode, simulate immediate success
+    // In production, would call actual M-Pesa API
+    const isSandbox = process.env.MPESA_SANDBOX !== 'false'
+    
+    if (isSandbox) {
+      // Sandbox: Simulate successful payment
+      const checkoutRequestId = `SANDBOX_${id}_${Date.now()}`
+      
+      // Mark as golden immediately in sandbox
+      await db
+        .update(queueEntries)
+        .set({
+          isGolden: true,
+          goldenTicketRef,
+          mpesaTransactionId: 'SANDBOX_TEST_123',
+          mpesaStatus: 'success',
+          mpesaPaidAt: new Date(),
+        })
+        .where(eq(queueEntries.id, Number(id)))
+
+      console.log(`✅ Golden ticket activated (SANDBOX): ${goldenTicketRef}`)
+      return res.status(200).json({
+        success: true,
+        checkoutRequestId,
+        responseCode: '0',
+        message: 'STK push simulated (SANDBOX MODE) - Golden ticket activated',
+        mpesaStatus: 'success',
+        goldenTicketRef,
+        sandbox: true,
+      })
+    } else {
+      // Production: Call actual M-Pesa API
+      // TODO: Implement actual M-Pesa STK push integration
+      // For now, return error
+      return res.status(500).json({
+        error: 'M-Pesa integration not yet configured for production',
+        message: 'Please configure M-Pesa credentials and implement STK push'
+      })
+    }
+  } catch (error) {
+    console.error('Error initiating M-Pesa payment:', error)
+    res.status(500).json({ error: 'Internal server error', details: error.message })
+  }
+})
+
+// POST /api/queue/mpesa-callback - Handle M-Pesa callback
+app.post('/api/queue/mpesa-callback', async (req, res) => {
+  try {
+    if (!db) {
+      console.error('🚨 Database not ready for callback')
+      return res.status(503).json({ error: 'Service unavailable' })
+    }
+
+    const callbackBody = req.body
+
+    console.log('📞 M-Pesa Callback received:', JSON.stringify(callbackBody, null, 2))
+
+    // Extract callback data
+    const stkCallback = callbackBody?.Body?.stkCallback || {}
+    const { ResultCode, CheckoutRequestID, CallbackMetadata } = stkCallback
+    const ResultDesc = stkCallback.ResultDesc || 'Unknown result'
+
+    if (!CheckoutRequestID) {
+      console.warn('⚠️ No CheckoutRequestID in callback')
+      return res.status(200).json({ success: false }) // Must return 200 to acknowledge
+    }
+
+    // Extract metadata
+    let transactionDetails = {}
+    if (CallbackMetadata?.Item) {
+      CallbackMetadata.Item.forEach(item => {
+        transactionDetails[item.Name] = item.Value
+      })
+    }
+
+    // Find queue entry by checkout ID (stored when payment was initiated)
+    // For now, extract from CheckoutRequestID format: "SANDBOX_{id}_{timestamp}"
+    let queueEntryId = null
+    if (CheckoutRequestID.startsWith('SANDBOX_')) {
+      const parts = CheckoutRequestID.split('_')
+      queueEntryId = parseInt(parts[1], 10)
+    }
+
+    if (!queueEntryId) {
+      console.warn(`⚠️ Could not extract queue ID from checkout: ${CheckoutRequestID}`)
+      return res.status(200).json({ success: false })
+    }
+
+    // Get queue entry
+    const entry = await db
+      .select()
+      .from(queueEntries)
+      .where(eq(queueEntries.id, queueEntryId))
+      .limit(1)
+      .then(rows => rows[0] || null)
+
+    if (!entry) {
+      console.warn(`⚠️ Queue entry not found: ${queueEntryId}`)
+      return res.status(200).json({ success: false })
+    }
+
+    // Handle payment result
+    if (ResultCode === 0) {
+      // Payment successful
+      const receiptNumber = transactionDetails['MpesaReceiptNumber'] || 'UNKNOWN'
+      const amount = transactionDetails['Amount'] || 0
+      
+      const date = new Date().toISOString().split('T')[0].replace(/-/g, '')
+      const sequence = await db
+        .select({ count: sql`cast(count(*) as integer)` })
+        .from(queueEntries)
+        .where(and(
+          eq(queueEntries.serviceType, entry.serviceType),
+          eq(queueEntries.isGolden, true),
+          sql`DATE(${queueEntries.createdAt}) = CURRENT_DATE`
+        ))
+        .then(rows => (rows[0]?.count ?? 0) + 1)
+
+      const goldenTicketRef = `GT-${entry.serviceType.toUpperCase().substring(0, 3)}-${date}-${String(sequence).padStart(3, '0')}`
+
+      // Update queue entry
+      await db
+        .update(queueEntries)
+        .set({
+          isGolden: true,
+          goldenTicketRef,
+          mpesaTransactionId: receiptNumber,
+          mpesaStatus: 'success',
+          mpesaPaidAt: new Date(),
+        })
+        .where(eq(queueEntries.id, queueEntryId))
+
+      console.log(`✅ Golden ticket activated: ${goldenTicketRef} (Receipt: ${receiptNumber}, Amount: KES ${amount})`)
+    } else {
+      // Payment failed
+      await db
+        .update(queueEntries)
+        .set({
+          mpesaStatus: 'failed',
+        })
+        .where(eq(queueEntries.id, queueEntryId))
+
+      console.log(`❌ M-Pesa payment failed for queue ${queueEntryId}: ${ResultDesc}`)
+    }
+
+    // Always return 200 to acknowledge receipt
+    res.status(200).json({ success: true })
+  } catch (error) {
+    console.error('Error processing M-Pesa callback:', error)
+    res.status(200).json({ success: false }) // Return 200 even on error to prevent M-Pesa retries
   }
 })
 
