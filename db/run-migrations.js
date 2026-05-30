@@ -1,8 +1,16 @@
-import 'dotenv/config'
+import dotenv from 'dotenv'
 import postgres from 'postgres'
 import { readdir, readFile, stat } from 'fs/promises'
 import path from 'path'
 import { fileURLToPath } from 'url'
+
+// Load environment variables - prioritize .env.local for development
+const NODE_ENV_INITIAL = process.env.NODE_ENV || 'development'
+if (NODE_ENV_INITIAL === 'development') {
+  dotenv.config({ path: '.env.local' })
+} else {
+  dotenv.config()
+}
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 

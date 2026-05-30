@@ -1,4 +1,4 @@
-import { createRouter, RootRoute, Route } from '@tanstack/react-router'
+import { createRouter, RootRoute, Route, redirect } from '@tanstack/react-router'
 import RootLayout from './routes/__root'
 import StudentDashboard from './routes/index'
 import AdminPage from './routes/admin'
@@ -10,10 +10,16 @@ const rootRoute = new RootRoute({
   component: RootLayout,
 })
 
-// Student dashboard (home page)
+// Student dashboard (home page) - now requires login
 const indexRoute = new Route({
   getParentRoute: () => rootRoute,
   path: '/',
+  beforeLoad: () => {
+    // Redirect to login on page load
+    throw redirect({
+      to: '/login',
+    })
+  },
   component: StudentDashboard,
 })
 

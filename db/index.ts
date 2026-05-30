@@ -23,7 +23,13 @@ import { drizzle } from "drizzle-orm/postgres-js";
 import postgres from "postgres";
 import * as schema from "./schema.js";
 
-dotenv.config();
+// Load environment variables - prioritize .env.local for development
+const NODE_ENV_INITIAL = process.env.NODE_ENV || 'development'
+if (NODE_ENV_INITIAL === 'development') {
+  dotenv.config({ path: '.env.local' })
+} else {
+  dotenv.config()
+}
 
 // Configuration
 const NODE_ENV = process.env.NODE_ENV || 'development'

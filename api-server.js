@@ -8,7 +8,13 @@ import { pgTable, serial, text, timestamp, integer, pgEnum, boolean } from 'driz
 import path from 'path'
 import { fileURLToPath } from 'url'
 
-dotenv.config()
+// Load environment variables - prioritize .env.local for development
+const NODE_ENV_INITIAL = process.env.NODE_ENV || 'development'
+if (NODE_ENV_INITIAL === 'development') {
+  dotenv.config({ path: '.env.local' })
+} else {
+  dotenv.config()
+}
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 const NODE_ENV = process.env.NODE_ENV || 'development'
