@@ -1,6 +1,6 @@
 import { json } from '@tanstack/start'
-import { db } from '../../../db/index'
-import { queueEntries } from '../../../db/schema'
+import { db } from '../../../../db/index'
+import { queueEntries } from '../../../../db/schema'
 import { eq, and, sql } from 'drizzle-orm'
 
 // M-PESA Configuration
@@ -11,7 +11,7 @@ const MPESA_PASSKEY = process.env.PASSKEY || process.env.MPESA_PASSKEY || ''
 const MPESA_CALLBACK_URL = process.env.CALLBACK_URL || process.env.MPESA_CALLBACK_URL || 'https://jkuat-online-queue.onrender.com/api/queue/mpesa-callback'
 
 // Sandbox credentials for testing
-const SANDBOX_MODE = process.env.NODE_ENV !== 'production' || process.env.MPESA_SANDBOX === 'true'
+const SANDBOX_MODE = process.env.MPESA_ENVIRONMENT === 'sandbox' || process.env.MPESA_SANDBOX === 'true' || process.env.NODE_ENV !== 'production'
 const SANDBOX_SHORTCODE = '174379'
 const SANDBOX_PASSKEY = 'bfb279f9ba9b9d1380007480bbe7f27425e1aa6d4ede3891ec337007a74ff42'
 
@@ -167,29 +167,35 @@ export async function POST(request: Request, { params }: { params: { id: string 
 
     // Check sandbox mode
     if (SANDBOX_MODE) {
-      // Sandbox: Simulate successful payment
+      // Sandbox: Simulate STK push (DO NOT auto-complete - user must manually trigger callback)
       const checkoutRequestId = `SANDBOX_${id}_${Date.now()}`
       
-      // Mark as golden immediately in sandbox
+      // Set as pending - wait for callback
       await db.update(queueEntries)
         .set({
-          isGolden: true,
           goldenTicketRef,
-          mpesaTransactionId: 'SANDBOX_TEST_123',
-          mpesaStatus: 'success',
-          mpesaPaidAt: new Date(),
+          mpesaTransactionId: checkoutRequestId,
+          mpesaStatus: 'pending',
         })
         .where(eq(queueEntries.id, id))
 
-      console.log(`OK Golden ticket activated (SANDBOX): ${goldenTicketRef}`)
+      console.log(`✅ SANDBOX: STK Push initiated for ${goldenTicketRef}`)
+      console.log(`📱 User should see M-Pesa prompt on phone`)
+      console.log(`⏳ Status remains PENDING until callback is received`)
+      console.log(`🔗 Testing callback: POST /api/queue/mpesa-callback with ResultCode 0 to complete payment`)
+      
+      // DO NOT auto-complete in sandbox - this is the bug!
+      // The user (or test script) must manually trigger the callback
+
       return json({
         success: true,
         checkoutRequestId,
         responseCode: '0',
-        message: 'STK push simulated (SANDBOX MODE) - Golden ticket activated',
-        mpesaStatus: 'success',
+        message: 'STK push initiated - Check your phone for M-Pesa prompt. Enter your PIN to complete payment.',
+        mpesaStatus: 'pending',
         goldenTicketRef,
         sandbox: true,
+        testingNote: 'To test completion, POST to /api/queue/mpesa-callback with the callback payload',
       })
     } else {
       // Production: Call actual M-Pesa Daraja API for STK Push

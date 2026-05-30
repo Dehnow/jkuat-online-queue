@@ -456,14 +456,26 @@ function StudentDashboard() {
       const data = await res.json()
       setMpesaStatus('pending')
       
-      // Poll status every 3 seconds
+      console.log('✅ M-Pesa payment initiated. Status:', data.mpesaStatus)
+      console.log('📱 Waiting for user to complete payment on their phone...')
+      
+      // Poll status every 2 seconds (wait for callback)
+      // Timeout: 10 minutes (600 seconds / 2 = 300 attempts)
       let attempts = 0
+      const MAX_ATTEMPTS = 300 // 10 minutes
+      const POLL_INTERVAL = 2000 // 2 seconds
+      
       const pollInterval = setInterval(async () => {
         attempts++
-        if (attempts > 40) { // 2 minutes timeout
+        
+        if (attempts > MAX_ATTEMPTS) {
           clearInterval(pollInterval)
           setGoldenLoading(false)
-          setGoldenError('Payment verification timed out. Check your M-Pesa message.')
+          setGoldenError(
+            '⏱️ Payment verification timed out after 10 minutes.\n' +
+            'If you completed the payment, your ticket will be upgraded shortly.\n' +
+            'Check your M-Pesa message for confirmation.'
+          )
           return
         }
 
@@ -471,26 +483,32 @@ function StudentDashboard() {
           const statusRes = await fetch(`/api/queue/${selectedTicketForGolden}/mpesa-status`)
           if (statusRes.ok) {
             const status = await statusRes.json()
+            
             if (status.mpesaStatus === 'success') {
+              console.log('✅ Payment successful! Status updated from M-Pesa callback.')
               clearInterval(pollInterval)
               setMpesaStatus('success')
               setGoldenSuccess(true)
               setGoldenLoading(false)
+              
+              // Show success for 3 seconds then close
               setTimeout(() => {
                 setShowGoldenModal(false)
                 queryClient.invalidateQueries({ queryKey: ['service-stats'] })
-              }, 2000)
+              }, 3000)
             } else if (status.mpesaStatus === 'failed') {
+              console.error('❌ Payment failed.')
               clearInterval(pollInterval)
               setMpesaStatus('failed')
               setGoldenLoading(false)
-              setGoldenError('Payment failed. Please try again.')
+              setGoldenError('❌ Payment failed. Please check your M-Pesa message and try again.')
             }
+            // If still 'pending', keep polling (do nothing)
           }
         } catch (err) {
           console.error('Error checking payment status:', err)
         }
-      }, 3000)
+      }, POLL_INTERVAL)
     } catch (err) {
       setGoldenError(err instanceof Error ? err.message : 'Network error')
       setGoldenLoading(false)
@@ -974,13 +992,24 @@ function StudentDashboard() {
                     <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-yellow-400"></div>
                   </div>
                   <div>
-                    <h3 className="text-lg font-bold text-gray-800">Processing Payment...</h3>
-                    <p className="text-sm text-gray-600 mt-2">Check your phone for the M-Pesa prompt. Enter your PIN to complete the payment.</p>
-                    <div className="mt-4 bg-blue-50 border border-blue-200 rounded-lg p-3 text-xs text-blue-700">
-                      <p><strong>📱 What's next:</strong></p>
-                      <p className="mt-1">1. Look for M-Pesa STK prompt on your phone</p>
-                      <p>2. Enter your M-Pesa PIN</p>
-                      <p>3. Wait for confirmation</p>
+                    <h3 className="text-lg font-bold text-gray-800">⏳ Waiting for M-Pesa Confirmation...</h3>
+                    <p className="text-sm text-gray-600 mt-2">Do not close this dialog. The system is waiting for payment confirmation from Safaricom.</p>
+                    <div className="mt-4 bg-blue-50 border border-blue-200 rounded-lg p-4 text-xs text-blue-700 space-y-2">
+                      <p><strong>📱 What to expect:</strong></p>
+                      <ol className="ml-4 space-y-1 text-left">
+                        <li>1️⃣ M-Pesa prompt appears on your phone within seconds</li>
+                        <li>2️⃣ Enter your M-Pesa PIN to authorize payment</li>
+                        <li>3️⃣ You receive M-Pesa confirmation message (KES 50 deducted)</li>
+                        <li>4️⃣ This dialog updates to show ✅ Payment Successful!</li>
+                      </ol>
+                      <hr className="my-2" />
+                      <p className="font-semibold">⏱️ Timeout: 10 minutes. If prompt doesn't appear:</p>
+                      <ul className="ml-4 space-y-1 text-left">
+                        <li>✓ Verify your phone number is correct (254XXXXXXXXX)</li>
+                        <li>✓ Ensure your M-Pesa account has sufficient balance</li>
+                        <li>✓ Check you have mobile signal/internet</li>
+                        <li>✓ Restart M-Pesa app and try again</li>
+                      </ul>
                     </div>
                   </div>
                 </div>

@@ -1,6 +1,6 @@
 import { json } from '@tanstack/start'
-import { db } from '../../../db/index'
-import { queueEntries } from '../../../db/schema'
+import { db } from '../../../../db/index'
+import { queueEntries } from '../../../../db/schema'
 import { eq } from 'drizzle-orm'
 
 export async function GET(request: Request, { params }: { params: { id: string } }) {
