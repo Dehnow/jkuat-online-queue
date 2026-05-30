@@ -28,7 +28,7 @@ async function initializeData() {
     let officesCount = 0
     try {
       const officesResult = await client`SELECT COUNT(*) as count FROM offices`
-      officesCount = officesResult[0]?.count ?? 0
+      officesCount = Number(officesResult[0]?.count ?? 0)
     } catch (err) {
       console.error('⚠️  Could not query offices table:', err.message)
       console.error('    Table may not exist yet (migrations must run first)')
@@ -63,9 +63,9 @@ async function initializeData() {
       const staffCount = await client`SELECT COUNT(*) as count FROM staff_accounts`
       const newOfficeCount = await client`SELECT COUNT(*) as count FROM offices`
       
-      console.log(`  - Offices: ${newOfficeCount[0]?.count ?? 0}`)
-      console.log(`  - Queue Entries: ${queueCount[0]?.count ?? 0}`)
-      console.log(`  - Staff Accounts: ${staffCount[0]?.count ?? 0}`)
+      console.log(`  - Offices: ${Number(newOfficeCount[0]?.count ?? 0)}`)
+      console.log(`  - Queue Entries: ${Number(queueCount[0]?.count ?? 0)}`)
+      console.log(`  - Staff Accounts: ${Number(staffCount[0]?.count ?? 0)}`)
     } catch (err) {
       console.error('⚠️  Could not verify data:', err.message)
     }
