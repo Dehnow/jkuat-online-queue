@@ -1097,24 +1097,29 @@ app.post('/api/queue/:id/mpesa-pay', async (req, res) => {
       const checkoutRequestId = `SANDBOX_${id}_${Date.now()}`
       
       // Mark as golden immediately in sandbox
+      // FIXED: Don't auto-complete. Wait for callback to update status.
+      const checkoutRequestId = `SANDBOX_${id}_${Date.now()}`
+      
+      // Set as pending - wait for callback
       await db
         .update(queueEntries)
         .set({
-          isGolden: true,
           goldenTicketRef,
-          mpesaTransactionId: 'SANDBOX_TEST_123',
-          mpesaStatus: 'success',
-          mpesaPaidAt: new Date(),
+          mpesaTransactionId: checkoutRequestId,
+          mpesaStatus: 'pending',
         })
         .where(eq(queueEntries.id, Number(id)))
 
-      console.log(`OK Golden ticket activated (SANDBOX): ${goldenTicketRef}`)
+      console.log(`✅ SANDBOX: STK Push initiated for ${goldenTicketRef}`)
+      console.log(`📱 User should see M-Pesa prompt on phone`)
+      console.log(`⏳ Status remains PENDING until callback is received`)
+      
       return res.status(200).json({
         success: true,
         checkoutRequestId,
         responseCode: '0',
-        message: 'STK push simulated (SANDBOX MODE) - Golden ticket activated',
-        mpesaStatus: 'success',
+        message: 'STK push initiated - Check your phone for M-Pesa prompt. Enter your PIN to complete payment.',
+        mpesaStatus: 'pending',
         goldenTicketRef,
         sandbox: true,
       })
