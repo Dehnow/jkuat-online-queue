@@ -40,6 +40,23 @@ export default function LoginPage() {
     }
   }
 
+  // Reset form and error on component mount to prevent auto-login
+  useEffect(() => {
+    // Clear all stored credentials on page load for security
+    sessionStorage.removeItem('studentAuth')
+    sessionStorage.removeItem('adminAuth')
+    sessionStorage.removeItem('staffAuth')
+    // Reset form state
+    setStudentUsername('')
+    setStudentPassword('')
+    setAdminUsername('')
+    setAdminPassword('')
+    setStaffUsername('')
+    setStaffPassword('')
+    setError('')
+    setLoading(false)
+  }, [])
+
   useEffect(() => {
     setError('')
     if (role === 'student') {
@@ -84,21 +101,30 @@ export default function LoginPage() {
     setLoading(true)
     setError('')
     const auth = btoa(`${adminUsername}:${adminPassword}`)
+    
+    // Add timeout to prevent infinite loading
+    const timeoutId = setTimeout(() => {
+      setLoading(false)
+      setError('Request timed out. Please check your connection and try again.')
+    }, 10000)
+    
     try {
       const res = await fetch('/api/admin/report', {
         headers: { Authorization: `Basic ${auth}` }
       })
+      clearTimeout(timeoutId)
       if (res.ok) {
         sessionStorage.setItem('adminAuth', auth)
         sessionStorage.setItem('userRole', 'admin')
         navigate({ to: '/admin' })
       } else {
         setError('Invalid username or password')
+        setLoading(false)
       }
     } catch (err) {
+      clearTimeout(timeoutId)
       console.error(err)
       setError('Network error – try again')
-    } finally {
       setLoading(false)
     }
   }
@@ -111,6 +137,13 @@ export default function LoginPage() {
     }
     setLoading(true)
     setError('')
+    
+    // Add timeout to prevent infinite loading
+    const timeoutId = setTimeout(() => {
+      setLoading(false)
+      setError('Request timed out. Please check your connection and try again.')
+    }, 10000)
+    
     try {
       const res = await fetch('/api/staff/auth', {
         method: 'POST',
@@ -121,10 +154,12 @@ export default function LoginPage() {
           password: staffPassword,
         }),
       })
+      clearTimeout(timeoutId)
 
       if (!res.ok) {
         const data = await res.json()
         setError(data?.error || 'Invalid username or password')
+        setLoading(false)
       } else {
         sessionStorage.setItem('staffAuth', btoa(`${staffUsername}:${staffPassword}`))
         sessionStorage.setItem('userRole', 'staff')
@@ -133,9 +168,9 @@ export default function LoginPage() {
         navigate({ to: '/staff-dashboard' })
       }
     } catch (err) {
+      clearTimeout(timeoutId)
       console.error(err)
       setError('Network error – try again')
-    } finally {
       setLoading(false)
     }
   }
