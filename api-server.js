@@ -100,6 +100,9 @@ async function initializeDatabase() {
       max: 10, // Connection pool size
       idle_timeout: 30,
       connect_timeout: 10,
+      socket: {
+        family: 4, // Force IPv4 to avoid ENETUNREACH on Render free tier
+      }
     })
 
     // Test connection
