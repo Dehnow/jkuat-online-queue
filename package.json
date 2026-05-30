@@ -5,14 +5,19 @@
   "scripts": {
     "dev": "concurrently \"npm run dev:client\" \"npm run dev:server\"",
     "dev:client": "vite",
-    "dev:server": "node --watch api-server.js",
+    "dev:server": "cross-env NODE_ENV=development node --watch api-server.js",
+    "dev:local": "cross-env NODE_ENV=development concurrently \"npm run dev:client\" \"npm run dev:server\"",
     "build": "vite build",
     "preview": "vite preview",
     "server": "node api-server.js",
     "start": "npm run build && npm run server",
     "production": "node api-server.js",
     "migrate": "node db/run-migrations.js",
-    "init-data": "node db/init-data.js"
+    "migrate:local": "cross-env NODE_ENV=development node db/run-migrations.js",
+    "migrate:prod": "cross-env NODE_ENV=production node db/run-migrations.js",
+    "init-data": "node db/init-data.js",
+    "init-data:local": "cross-env NODE_ENV=development node db/init-data.js",
+    "init-data:prod": "cross-env NODE_ENV=production node db/init-data.js"
   },
   "dependencies": {
     "@tanstack/match-sorter-utils": "^8.15.1",
@@ -38,6 +43,7 @@
     "@types/react-dom": "^18.3.0",
     "@vitejs/plugin-react": "^4.2.0",
     "concurrently": "^8.2.2",
+    "cross-env": "^10.1.0",
     "drizzle-kit": "^0.31.10",
     "tailwindcss": "^4.2.2",
     "typescript": "^5.3.3",
