@@ -49,7 +49,7 @@ const MPESA_CONFIG = {
   callbackUrl: process.env.MPESA_CALLBACK_URL || 'http://localhost:3000/api/queue/mpesa-callback'
 }
 
-console.log(`💳 M-Pesa Mode: ${MPESA_CONFIG.isSandbox ? 'SANDBOX 🧪' : 'PRODUCTION 🚀'}`)
+console.log(`INFO M-Pesa Mode: ${MPESA_CONFIG.isSandbox ? 'SANDBOX 🧪' : 'PRODUCTION 🚀'}`)
 
 // Schema
 const statusEnum = pgEnum('queue_status', ['waiting', 'serving', 'served', 'cancelled'])
@@ -1084,7 +1084,7 @@ app.post('/api/queue/:id/mpesa-pay', async (req, res) => {
         })
         .where(eq(queueEntries.id, Number(id)))
 
-      console.log(`âœ… Golden ticket activated (SANDBOX): ${goldenTicketRef}`)
+      console.log(`OK Golden ticket activated (SANDBOX): ${goldenTicketRef}`)
       return res.status(200).json({
         success: true,
         checkoutRequestId,
@@ -1095,13 +1095,106 @@ app.post('/api/queue/:id/mpesa-pay', async (req, res) => {
         sandbox: true,
       })
     } else {
-      // Production: Call actual M-Pesa API
-      // TODO: Implement actual M-Pesa STK push integration
-      // For now, return error
-      return res.status(500).json({
-        error: 'M-Pesa integration not yet configured for production',
-        message: 'Please configure M-Pesa credentials and implement STK push'
-      })
+      // Production: Call actual M-Pesa Daraja API for STK Push
+      try {
+        // Get OAuth token from Daraja
+        const authUrl = 'https://api.safaricom.co.ke/oauth/v1/generate?grant_type=client_credentials'
+        const auth = Buffer.from(
+          `${MPESA_CONFIG.consumerKey}:${MPESA_CONFIG.consumerSecret}`
+        ).toString('base64')
+
+        const tokenResponse = await fetch(authUrl, {
+          method: 'GET',
+          headers: {
+            'Authorization': `Basic ${auth}`,
+            'Content-Type': 'application/json'
+          },
+          timeout: 10000
+        })
+
+        if (!tokenResponse.ok) {
+          throw new Error(`Token request failed: ${tokenResponse.statusText}`)
+        }
+
+        const tokenData = await tokenResponse.json()
+        const accessToken = tokenData.access_token
+
+        if (!accessToken) {
+          throw new Error('No access token received from Daraja')
+        }
+
+        // Prepare STK Push request
+        const timestamp = new Date().toISOString().replace(/[^0-9]/g, '').slice(0, 14)
+        const password = Buffer.from(
+          `${MPESA_CONFIG.tillNumber}${MPESA_CONFIG.passkey}${timestamp}`
+        ).toString('base64')
+
+        const checkoutRequestId = `${id}_${Date.now()}`
+        const stkPushUrl = 'https://api.safaricom.co.ke/mpesa/stkpush/v1/processrequest'
+
+        const stkPayload = {
+          BusinessShortCode: MPESA_CONFIG.tillNumber,
+          Password: password,
+          Timestamp: timestamp,
+          TransactionType: 'CustomerPayBillOnline',
+          Amount: 50, // KES 50 for golden ticket
+          PartyA: req.body.phoneNumber.replace(/[^\d]/g, '').slice(-10), // Extract 10-digit number
+          PartyB: MPESA_CONFIG.tillNumber,
+          PhoneNumber: req.body.phoneNumber.replace(/[^\d]/g, '').slice(-10),
+          CallBackURL: MPESA_CONFIG.callbackUrl,
+          AccountReference: goldenTicketRef,
+          TransactionDesc: 'Golden Ticket - Priority Queue Access'
+        }
+
+        // Call M-Pesa STK Push
+        const stkResponse = await fetch(stkPushUrl, {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${accessToken}`,
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify(stkPayload),
+          timeout: 10000
+        })
+
+        const stkData = await stkResponse.json()
+
+        if (stkData.ResponseCode === '0' || stkData.errorCode === '0') {
+          // STK Push initiated successfully
+          // Mark payment as pending in database
+          await db
+            .update(queueEntries)
+            .set({
+              mpesaTransactionId: stkData.CheckoutRequestID || checkoutRequestId,
+              mpesaStatus: 'pending',
+              goldenTicketRef,
+            })
+            .where(eq(queueEntries.id, Number(id)))
+
+          console.log(`INFO STK Push initiated (PRODUCTION): ${goldenTicketRef}`)
+          console.log(`INFO CheckoutRequestID: ${stkData.CheckoutRequestID}`)
+
+          return res.status(200).json({
+            success: true,
+            checkoutRequestId: stkData.CheckoutRequestID || checkoutRequestId,
+            responseCode: stkData.ResponseCode || stkData.errorCode,
+            customerMessage: stkData.CustomerMessage || 'STK prompt sent to your phone. Enter your M-Pesa PIN to complete payment.',
+            message: 'STK push sent successfully. Waiting for user PIN entry...',
+            mpesaStatus: 'pending',
+            goldenTicketRef,
+            sandbox: false,
+          })
+        } else {
+          throw new Error(`STK Push failed: ${stkData.errorMessage || stkData.ResponseDescription || 'Unknown error'}`)
+        }
+      } catch (stkError) {
+        console.error('ERROR STK Push error:', stkError.message)
+        return res.status(500).json({
+          error: 'STK Push failed',
+          message: stkError.message || 'Failed to initiate M-Pesa payment',
+          details: NODE_ENV === 'development' ? stkError.message : undefined
+        })
+      }
     }
   } catch (error) {
     console.error('Error initiating M-Pesa payment:', error)
@@ -1339,5 +1432,6 @@ startServer().catch((error) => {
   console.error('Failed to start server:', error)
   process.exit(1)
 })
+
 
 
