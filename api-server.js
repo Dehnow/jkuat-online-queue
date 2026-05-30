@@ -44,7 +44,7 @@ const MPESA_CONFIG = {
   isSandbox: process.env.MPESA_SANDBOX !== 'false',
   consumerKey: process.env.MPESA_CONSUMER_KEY || 'YLPydMh4xhirGrux1cdHyqKRCE3BzinLxdlzed4s88XyiRnu',
   consumerSecret: process.env.MPESA_CONSUMER_SECRET || 'RuAadmSxyhwAqjk1GqEwW3vyoDtbCD0nByXAHR7GZw0COLoxSI6u0AKa91wSL4uw',
-  passkey: process.env.MPESA_PASSKEY || 'bfb279f9437018fe0bb787d60c0f6cfd',
+  passkey: process.env.MPESA_PASSKEY || 'bfb279f9aa9bdbcf158e97dd71a467cd2e0c893059b10f78e6b72ada1ed2c919',
   tillNumber: process.env.MPESA_TILL_NUMBER || '174379',
   callbackUrl: process.env.MPESA_CALLBACK_URL || 'http://localhost:3000/api/queue/mpesa-callback'
 }
