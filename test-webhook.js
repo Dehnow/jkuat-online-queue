@@ -17,9 +17,9 @@
  *   health         - Check backend health
  */
 
-const http = require('http');
-const https = require('https');
-const url = require('url');
+import http from 'http';
+import https from 'https';
+import { URL } from 'url';
 
 // Configuration
 const BACKEND_URL = process.env.BACKEND_URL || 'http://localhost:3000';

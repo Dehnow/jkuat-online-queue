@@ -405,8 +405,17 @@ export function registerMpesaRoutes(app, deps = {}) {
           description: 'Golden Ticket',
         })
 
+        // 🔥 CRITICAL: Validate CheckoutRequestID before storing
+        if (!result.checkoutRequestId || result.checkoutRequestId.trim() === '') {
+          console.error(`❌ CRITICAL: M-Pesa returned empty CheckoutRequestID`)
+          return res.status(500).json({
+            error: 'Invalid M-Pesa response',
+            message: 'M-Pesa did not return a valid CheckoutRequestID'
+          })
+        }
+
         // Store the checkoutRequestId for later callback matching
-        await db
+        const updateResult = await db
           .update(queueEntries)
           .set({
             goldenTicketRef,
@@ -414,9 +423,33 @@ export function registerMpesaRoutes(app, deps = {}) {
             mpesaStatus: 'pending',  // Waiting for STK response
           })
           .where(eq(queueEntries.id, Number(id)))
+          .returning()
+
+        // VALIDATION: Ensure database update succeeded
+        if (!updateResult || updateResult.length === 0) {
+          console.error(`❌ CRITICAL: Database update failed for queue ${id}`)
+          console.warn(`⚠️  Database update returned no rows for queue ${id}`)
+          return res.status(500).json({
+            error: 'Database error',
+            message: 'Failed to store transaction ID in database'
+          })
+        }
+
+        // VERIFICATION: Confirm the CheckoutRequestID was actually stored
+        const storedEntry = updateResult[0]
+        if (storedEntry.mpesaTransactionId !== result.checkoutRequestId) {
+          console.error(`❌ CRITICAL: CheckoutRequestID not stored correctly`)
+          console.error(`   Expected: ${result.checkoutRequestId}`)
+          console.error(`   Stored: ${storedEntry.mpesaTransactionId}`)
+          return res.status(500).json({
+            error: 'Data verification failed',
+            message: 'Transaction ID was not stored correctly'
+          })
+        }
 
         console.log(`✅ STK Push initiated for ${goldenTicketRef}`)
         console.log(`   CheckoutRequestID: ${result.checkoutRequestId}`)
+        console.log(`   ✓ Verified in database`)
         console.log(`   Phone: ${phoneNorm}, Amount: KES ${GOLDEN_PRICE}`)
         console.log(`   Queue ${id} now awaiting user PIN entry...`)
 
@@ -427,6 +460,7 @@ export function registerMpesaRoutes(app, deps = {}) {
           message: result.customerMessage || 'STK push initiated - Check your phone for M-Pesa prompt.',
           mpesaStatus: 'pending',
           goldenTicketRef,
+          verified: true,
         })
       } catch (error) {
         console.error(`❌ [STK-Pay] Failed to initiate STK push for queue ${id}:`, error.message)
@@ -485,6 +519,37 @@ export function registerMpesaRoutes(app, deps = {}) {
 
       if (!entry) {
         console.warn(`⚠️ Queue entry NOT FOUND for CheckoutRequestID: ${CheckoutRequestID}`)
+        
+        // DIAGNOSTIC: Check if CheckoutRequestID is stored in ANY entry
+        console.warn(`   Running diagnostic checks...`)
+        try {
+          const checkoutIdMatches = await db
+            .select({ count: sql`cast(count(*) as integer)` })
+            .from(queueEntries)
+            .where(eq(queueEntries.mpesaTransactionId, CheckoutRequestID))
+            .then(rows => rows[0]?.count ?? 0)
+          
+          if (checkoutIdMatches > 0) {
+            console.warn(`   ✓ Found ${checkoutIdMatches} entry(ies) with matching CheckoutRequestID`)
+          } else {
+            console.error(`   ✗ NO entries found with CheckoutRequestID: ${CheckoutRequestID}`)
+            console.error(`   This means the CheckoutRequestID was NOT stored in the database during STK push!`)
+            
+            // Check for pending entries
+            const pendingCount = await db
+              .select({ count: sql`cast(count(*) as integer)` })
+              .from(queueEntries)
+              .where(eq(queueEntries.mpesaStatus, 'pending'))
+              .then(rows => rows[0]?.count ?? 0)
+            
+            if (pendingCount > 0) {
+              console.error(`   ⚠️  Found ${pendingCount} pending entries without the expected CheckoutRequestID`)
+            }
+          }
+        } catch (diagError) {
+          console.error(`   Error during diagnostic check:`, diagError)
+        }
+        
         // Still return 200 to acknowledge receipt from Safaricom
         return res.status(200).json({ success: false })
       }
@@ -514,6 +579,7 @@ export function registerMpesaRoutes(app, deps = {}) {
             // Optionally could add a receipt_number field in future
           })
           .where(eq(queueEntries.id, entry.id))
+          .returning()
 
         console.log(`🎉 Golden ticket ACTIVATED: ${entry.goldenTicketRef}`)
         console.log(`   Queue #${entry.queueNumber} now has priority status`)
@@ -528,6 +594,7 @@ export function registerMpesaRoutes(app, deps = {}) {
             mpesaStatus: 'failed',
           })
           .where(eq(queueEntries.id, entry.id))
+          .returning()
 
         console.log(`   Status updated to 'failed' - user did not complete payment`)
 
@@ -541,6 +608,7 @@ export function registerMpesaRoutes(app, deps = {}) {
             mpesaStatus: 'failed',
           })
           .where(eq(queueEntries.id, entry.id))
+          .returning()
 
         console.log(`   Queue entry ${entry.id} payment status set to failed`)
       }

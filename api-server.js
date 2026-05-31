@@ -1242,21 +1242,63 @@ app.post('/api/queue/mpesa', async (req, res) => {
     const stkData = await stkRes.json()
 
     if (stkData.ResponseCode === '0') {
-      // Update transaction ID
-      await db.update(queueEntries)
-        .set({
-          mpesaTransactionId: stkData.CheckoutRequestID,
-          mpesaStatus: 'pending',
+      // 🔥 CRITICAL: Validate CheckoutRequestID before storing
+      if (!stkData.CheckoutRequestID || stkData.CheckoutRequestID.trim() === '') {
+        console.error(`❌ CRITICAL: M-Pesa returned empty CheckoutRequestID`)
+        return res.status(500).json({
+          error: 'Invalid M-Pesa response',
+          message: 'M-Pesa did not return a valid CheckoutRequestID'
         })
-        .where(eq(queueEntries.id, Number(queueId)))
+      }
 
-      console.log(`? STK Push initiated for queue ${queueId}: ${stkData.CheckoutRequestID}`)
+      try {
+        // Update transaction ID
+        const updateResult = await db.update(queueEntries)
+          .set({
+            mpesaTransactionId: stkData.CheckoutRequestID,
+            mpesaStatus: 'pending',
+          })
+          .where(eq(queueEntries.id, Number(queueId)))
+          .returning()
 
-      return res.json({
-        success: true,
-        message: 'M-Pesa prompt sent to your phone',
-        checkoutRequestId: stkData.CheckoutRequestID,
-      })
+        // VALIDATION: Ensure database update succeeded
+        if (!updateResult || updateResult.length === 0) {
+          console.error(`❌ CRITICAL: Database update failed for queue ${queueId}`)
+          return res.status(500).json({
+            error: 'Database error',
+            message: 'Failed to store transaction ID in database'
+          })
+        }
+
+        // VERIFICATION: Confirm the CheckoutRequestID was actually stored
+        const storedEntry = updateResult[0]
+        if (storedEntry.mpesaTransactionId !== stkData.CheckoutRequestID) {
+          console.error(`❌ CRITICAL: CheckoutRequestID not stored correctly`)
+          console.error(`   Expected: ${stkData.CheckoutRequestID}`)
+          console.error(`   Stored: ${storedEntry.mpesaTransactionId}`)
+          return res.status(500).json({
+            error: 'Data verification failed',
+            message: 'Transaction ID was not stored correctly'
+          })
+        }
+
+        console.log(`✅ STK Push initiated for queue ${queueId}: ${stkData.CheckoutRequestID}`)
+        console.log(`   ✓ Verified in database`)
+
+        return res.json({
+          success: true,
+          message: 'M-Pesa prompt sent to your phone',
+          checkoutRequestId: stkData.CheckoutRequestID,
+          verified: true,
+        })
+      } catch (dbError) {
+        console.error(`❌ Database error while storing CheckoutRequestID:`, dbError)
+        return res.status(500).json({
+          error: 'Database error',
+          message: 'Failed to store transaction ID in database',
+          details: dbError.message
+        })
+      }
     } else {
       return res.status(400).json({
         error: stkData.ResponseDescription || 'Failed to initiate payment',
@@ -1448,7 +1490,38 @@ app.post('/api/queue/mpesa-callback', async (req, res) => {
     }
 
     if (!entry) {
-      console.warn(`No queue entry for: ${CheckoutRequestID}`)
+      console.warn(`❌ No queue entry for: ${CheckoutRequestID}`)
+      
+      // DIAGNOSTIC: Check if CheckoutRequestID is stored in ANY entry
+      console.warn(`   Running diagnostic checks...`)
+      try {
+        const checkoutIdMatches = await db
+          .select({ count: sql`cast(count(*) as integer)` })
+          .from(queueEntries)
+          .where(eq(queueEntries.mpesaTransactionId, CheckoutRequestID))
+          .then(rows => rows[0]?.count ?? 0)
+        
+        if (checkoutIdMatches > 0) {
+          console.warn(`   ✓ Found ${checkoutIdMatches} entry(ies) with matching CheckoutRequestID`)
+        } else {
+          console.error(`   ✗ NO entries found with CheckoutRequestID: ${CheckoutRequestID}`)
+          console.error(`   This means the CheckoutRequestID was NOT stored in the database during STK push!`)
+          
+          // Check for pending entries
+          const pendingCount = await db
+            .select({ count: sql`cast(count(*) as integer)` })
+            .from(queueEntries)
+            .where(eq(queueEntries.mpesaStatus, 'pending'))
+            .then(rows => rows[0]?.count ?? 0)
+          
+          if (pendingCount > 0) {
+            console.error(`   ⚠️  Found ${pendingCount} pending entries without the expected CheckoutRequestID`)
+          }
+        }
+      } catch (diagError) {
+        console.error(`   Error during diagnostic check:`, diagError)
+      }
+      
       return res.status(200).json({ success: false })
     }
 

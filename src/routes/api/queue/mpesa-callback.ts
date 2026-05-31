@@ -133,6 +133,35 @@ export async function POST(request: Request) {
     if (!entry) {
       console.warn(`⚠️  No queue entry found`)
       console.warn(`   Searched: goldenTicketRef="${goldenTicketRef}", CheckoutID="${CheckoutRequestID}", Receipt="${mpesaTransactionId}"`)
+      
+      // DIAGNOSTIC: Check if CheckoutRequestID is stored in ANY entry
+      console.warn(`   Running diagnostic checks...`)
+      try {
+        const checkoutIdMatches = await db.query.queueEntries.findMany({
+          where: eq(queueEntries.mpesaTransactionId, CheckoutRequestID)
+        })
+        if (checkoutIdMatches.length > 0) {
+          console.warn(`   ✓ Found ${checkoutIdMatches.length} entry(ies) with matching CheckoutRequestID`)
+        } else {
+          console.error(`   ✗ NO entries found with CheckoutRequestID: ${CheckoutRequestID}`)
+          console.error(`   This means the CheckoutRequestID was NOT stored in the database during STK push!`)
+          
+          // Check for pending entries (might not have CheckoutRequestID stored)
+          const pendingEntries = await db.query.queueEntries.findMany({
+            where: eq(queueEntries.mpesaStatus, 'pending')
+          })
+          if (pendingEntries.length > 0) {
+            console.error(`   ⚠️  Found ${pendingEntries.length} pending entries, but none have the expected CheckoutRequestID`)
+            console.error(`   Pending entries summary:`)
+            pendingEntries.forEach((e, i) => {
+              console.error(`      [${i+1}] ID=${e.id}, mpesaTransactionId="${e.mpesaTransactionId}", ref="${e.goldenTicketRef}"`)
+            })
+          }
+        }
+      } catch (diagError) {
+        console.error(`   Error during diagnostic check:`, diagError)
+      }
+      
       console.warn(`   Will not be able to update database, but returning 200 OK to M-Pesa`)
       
       // ✅ ALWAYS return 200 OK - M-Pesa must complete its request

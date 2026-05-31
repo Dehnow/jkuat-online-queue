@@ -336,33 +336,60 @@ export async function POST(request: Request, { params }: { params: { id: string 
       const checkoutRequestId = `SANDBOX_${id}_${Date.now()}`
       
       // 🔥 CRITICAL: Set as pending - wait for callback
-      await db.update(queueEntries)
-        .set({
-          goldenTicketRef,
-          mpesaTransactionId: checkoutRequestId,
-          mpesaStatus: 'pending',
-        })
-        .where(eq(queueEntries.id, id))
+      try {
+        const updateResult = await db.update(queueEntries)
+          .set({
+            goldenTicketRef,
+            mpesaTransactionId: checkoutRequestId,
+            mpesaStatus: 'pending',
+          })
+          .where(eq(queueEntries.id, id))
+          .returning()
 
-      console.log(`✅ SANDBOX: STK Push initiated for ${goldenTicketRef}`)
-      console.log(`   Queue ID: ${id}`)
-      console.log(`   Checkout Request ID: ${checkoutRequestId}`)
-      console.log(`   Status: PENDING (waiting for user PIN entry or callback)`)
-      console.log(`📱 User should see M-Pesa prompt on phone`)
-      console.log(`⏳ Status remains PENDING until callback is received with ResultCode 0`)
-      console.log(`🔗 Testing: POST /api/queue/mpesa-callback with ResultCode 0 to complete payment`)
-      
-      return json({
-        success: true,
-        checkoutRequestId,
-        responseCode: '0',
-        message: 'STK push initiated - Check your phone for M-Pesa prompt. Enter your PIN to complete payment.',
-        mpesaStatus: 'pending',
-        goldenTicketRef,
-        sandbox: true,
-        queueId: id,
-        testingNote: 'To test completion, POST to /api/queue/mpesa-callback with the callback payload',
-      })
+        // VALIDATION: Ensure database update succeeded
+        if (!updateResult || updateResult.length === 0) {
+          console.error(`❌ CRITICAL: Database update failed for queue ${id} (SANDBOX)`)
+          throw new Error('Database update failed - no rows returned')
+        }
+
+        // VERIFICATION: Confirm the CheckoutRequestID was actually stored
+        const storedEntry = updateResult[0]
+        if (storedEntry.mpesaTransactionId !== checkoutRequestId) {
+          console.error(`❌ CRITICAL: CheckoutRequestID not stored correctly (SANDBOX)`)
+          console.error(`   Expected: ${checkoutRequestId}`)
+          console.error(`   Stored: ${storedEntry.mpesaTransactionId}`)
+          throw new Error('CheckoutRequestID verification failed')
+        }
+
+        console.log(`✅ SANDBOX: STK Push initiated for ${goldenTicketRef}`)
+        console.log(`   Queue ID: ${id}`)
+        console.log(`   Checkout Request ID: ${checkoutRequestId}`)
+        console.log(`   ✓ Verified in database`)
+        console.log(`   Status: PENDING (waiting for user PIN entry or callback)`)
+        console.log(`📱 User should see M-Pesa prompt on phone`)
+        console.log(`⏳ Status remains PENDING until callback is received with ResultCode 0`)
+        console.log(`🔗 Testing: POST /api/queue/mpesa-callback with ResultCode 0 to complete payment`)
+        
+        return json({
+          success: true,
+          checkoutRequestId,
+          responseCode: '0',
+          message: 'STK push initiated - Check your phone for M-Pesa prompt. Enter your PIN to complete payment.',
+          mpesaStatus: 'pending',
+          goldenTicketRef,
+          sandbox: true,
+          queueId: id,
+          verified: true,
+          testingNote: 'To test completion, POST to /api/queue/mpesa-callback with the callback payload',
+        })
+      } catch (dbError) {
+        console.error(`❌ Database error while storing CheckoutRequestID (SANDBOX):`, dbError)
+        return json({
+          error: 'Database error',
+          message: 'Failed to store transaction ID in database. Please contact support.',
+          details: (dbError as Error).message,
+        }, { status: 500 })
+      }
     } else {
       // Production: Call actual M-Pesa Daraja API for STK Push
       try {
@@ -402,28 +429,66 @@ export async function POST(request: Request, { params }: { params: { id: string 
         if (paymentResult.success) {
           // 🔥 CRITICAL: Store the checkout request ID and set status to PENDING
           // Status will change to 'success' only after M-Pesa callback is received
-          await db.update(queueEntries)
-            .set({
-              mpesaTransactionId: paymentResult.checkoutRequestId,
+          
+          // VALIDATION: Ensure CheckoutRequestID is not empty
+          if (!paymentResult.checkoutRequestId || paymentResult.checkoutRequestId.trim() === '') {
+            console.error(`❌ CRITICAL: M-Pesa returned empty CheckoutRequestID`)
+            return json({
+              error: 'Invalid M-Pesa response',
+              message: 'M-Pesa did not return a valid CheckoutRequestID. Please try again.',
+            }, { status: 500 })
+          }
+
+          try {
+            const updateResult = await db.update(queueEntries)
+              .set({
+                mpesaTransactionId: paymentResult.checkoutRequestId,
+                mpesaStatus: 'pending',
+                goldenTicketRef,
+              })
+              .where(eq(queueEntries.id, id))
+              .returning()
+
+            // VALIDATION: Ensure database update succeeded
+            if (!updateResult || updateResult.length === 0) {
+              console.error(`❌ CRITICAL: Database update failed for queue ${id}`)
+              console.error(`   Returned: ${JSON.stringify(updateResult)}`)
+              throw new Error('Database update failed - no rows returned')
+            }
+
+            // VERIFICATION: Confirm the CheckoutRequestID was actually stored
+            const storedEntry = updateResult[0]
+            if (storedEntry.mpesaTransactionId !== paymentResult.checkoutRequestId) {
+              console.error(`❌ CRITICAL: CheckoutRequestID not stored correctly`)
+              console.error(`   Expected: ${paymentResult.checkoutRequestId}`)
+              console.error(`   Stored: ${storedEntry.mpesaTransactionId}`)
+              throw new Error('CheckoutRequestID verification failed')
+            }
+
+            console.log(`✅ STK Push initiated (PRODUCTION): ${goldenTicketRef}`)
+            console.log(`   CheckoutRequestID: ${paymentResult.checkoutRequestId}`)
+            console.log(`   Database Status: PENDING`)
+            console.log(`   ✓ Verified in database`)
+            console.log(`   Waiting for M-Pesa callback...`)
+            
+            return json({
+              success: true,
+              message: 'Payment prompt sent to your phone',
+              checkoutRequestId: paymentResult.checkoutRequestId,
+              environment: SANDBOX_MODE ? 'sandbox' : 'production',
               mpesaStatus: 'pending',
               goldenTicketRef,
+              queueId: id,
+              verified: true,
             })
-            .where(eq(queueEntries.id, id))
-
-          console.log(`✅ STK Push initiated (PRODUCTION): ${goldenTicketRef}`)
-          console.log(`   CheckoutRequestID: ${paymentResult.checkoutRequestId}`)
-          console.log(`   Database Status: PENDING`)
-          console.log(`   Waiting for M-Pesa callback...`)
-          
-          return json({
-            success: true,
-            message: 'Payment prompt sent to your phone',
-            checkoutRequestId: paymentResult.checkoutRequestId,
-            environment: SANDBOX_MODE ? 'sandbox' : 'production',
-            mpesaStatus: 'pending',
-            goldenTicketRef,
-            queueId: id,
-          })
+          } catch (dbError) {
+            console.error(`❌ Database error while storing CheckoutRequestID:`, dbError)
+            return json({
+              error: 'Database error',
+              message: 'Failed to store transaction ID in database. Please contact support.',
+              details: (dbError as Error).message,
+            }, { status: 500 })
+          }
         } else {
           console.error(`❌ STK Push initiation failed: ${paymentResult.error}`)
           console.error(`   Response Code: ${paymentResult.responseCode}`)

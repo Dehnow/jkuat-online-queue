@@ -164,23 +164,65 @@ export async function POST(request: Request) {
         )
 
         if (paymentResult.success) {
-          // 🔥 CRITICAL: Set status to PENDING immediately after STK push initiation
-          // Status will only change to 'success' after M-Pesa callback
-          await db.update(queueEntries)
-            .set({
-              mpesaTransactionId: paymentResult.checkoutRequestId,
-              mpesaStatus: 'pending',  // 🔥 MUST be pending until callback
-            })
-            .where(eq(queueEntries.id, queueId))
+          // 🔥 CRITICAL: Validate CheckoutRequestID before storing
+          if (!paymentResult.checkoutRequestId || paymentResult.checkoutRequestId.trim() === '') {
+            console.error(`❌ CRITICAL: M-Pesa returned empty CheckoutRequestID`)
+            return json({
+              error: 'Invalid M-Pesa response',
+              message: 'M-Pesa did not return a valid CheckoutRequestID. Please try again.'
+            }, { status: 500 })
+          }
 
-          console.log(`✅ STK Push initiated. Status set to PENDING: ${paymentResult.checkoutRequestId}`)
-          return json({
-            success: true,
-            message: 'Payment prompt sent to your phone',
-            checkoutRequestId: paymentResult.checkoutRequestId,
-            mpesaStatus: 'pending',
-            environment: SANDBOX_MODE ? 'sandbox' : 'production',
-          })
+          try {
+            // 🔥 CRITICAL: Set status to PENDING immediately after STK push initiation
+            // Status will only change to 'success' after M-Pesa callback
+            const updateResult = await db.update(queueEntries)
+              .set({
+                mpesaTransactionId: paymentResult.checkoutRequestId,
+                mpesaStatus: 'pending',  // 🔥 MUST be pending until callback
+              })
+              .where(eq(queueEntries.id, queueId))
+              .returning()
+
+            // VALIDATION: Ensure database update succeeded
+            if (!updateResult || updateResult.length === 0) {
+              console.error(`❌ CRITICAL: Database update failed for queue ${queueId}`)
+              return json({
+                error: 'Database error',
+                message: 'Failed to store transaction ID in database'
+              }, { status: 500 })
+            }
+
+            // VERIFICATION: Confirm the CheckoutRequestID was actually stored
+            const storedEntry = updateResult[0]
+            if (storedEntry.mpesaTransactionId !== paymentResult.checkoutRequestId) {
+              console.error(`❌ CRITICAL: CheckoutRequestID not stored correctly`)
+              console.error(`   Expected: ${paymentResult.checkoutRequestId}`)
+              console.error(`   Stored: ${storedEntry.mpesaTransactionId}`)
+              return json({
+                error: 'Data verification failed',
+                message: 'Transaction ID was not stored correctly'
+              }, { status: 500 })
+            }
+
+            console.log(`✅ STK Push initiated. Status set to PENDING: ${paymentResult.checkoutRequestId}`)
+            console.log(`   ✓ Verified in database`)
+            return json({
+              success: true,
+              message: 'Payment prompt sent to your phone',
+              checkoutRequestId: paymentResult.checkoutRequestId,
+              verified: true,
+              mpesaStatus: 'pending',
+              environment: SANDBOX_MODE ? 'sandbox' : 'production',
+            })
+          } catch (dbError) {
+            console.error(`❌ Database error while storing CheckoutRequestID:`, dbError)
+            return json({
+              error: 'Database error',
+              message: 'Failed to store transaction ID in database. Please contact support.',
+              details: (dbError as Error).message,
+            }, { status: 500 })
+          }
         } else {
           console.error(`❌ STK Push initiation failed: ${paymentResult.error}`)
           return json({
