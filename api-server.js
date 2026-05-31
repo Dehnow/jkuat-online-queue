@@ -1268,6 +1268,121 @@ app.post('/api/queue/mpesa', async (req, res) => {
   }
 })
 
+// GET /api/queue/:id/mpesa-status - Check M-Pesa payment status for a queue entry
+app.get('/api/queue/:id/mpesa-status', async (req, res) => {
+  try {
+    if (!db) {
+      return res.status(503).json({ error: 'Database not ready' })
+    }
+
+    const id = Number(req.params.id)
+    
+    if (isNaN(id)) {
+      return res.status(400).json({ error: 'Invalid queue entry ID' })
+    }
+
+    console.log(`📱 Checking M-Pesa status for queue entry ${id}`)
+
+    const entry = await db
+      .select({
+        id: queueEntries.id,
+        isGolden: queueEntries.isGolden,
+        mpesaStatus: queueEntries.mpesaStatus,
+        mpesaTransactionId: queueEntries.mpesaTransactionId,
+        mpesaPaidAt: queueEntries.mpesaPaidAt,
+        goldenTicketRef: queueEntries.goldenTicketRef,
+        status: queueEntries.status,
+      })
+      .from(queueEntries)
+      .where(eq(queueEntries.id, id))
+      .limit(1)
+      .then(rows => rows[0] || null)
+
+    if (!entry) {
+      return res.status(404).json({ error: 'Queue entry not found' })
+    }
+
+    // Log status
+    if (entry.mpesaStatus === 'success') {
+      console.log(`✅ M-Pesa Payment SUCCESS for queue ${id}: ${entry.goldenTicketRef}`)
+    } else if (entry.mpesaStatus === 'failed') {
+      console.log(`❌ M-Pesa Payment FAILED for queue ${id}`)
+    } else {
+      console.log(`⏳ M-Pesa Payment PENDING for queue ${id} (waiting for callback)`)
+    }
+
+    res.status(200).json(entry)
+  } catch (error) {
+    console.error('❌ Error checking M-Pesa status:', error)
+    res.status(500).json({ error: 'Internal server error' })
+  }
+})
+
+// GET /api/mpesa/callback-status - Fallback endpoint for callback status (by CheckoutRequestID)
+app.get('/api/mpesa/callback-status', async (req, res) => {
+  try {
+    if (!db) {
+      return res.status(503).json({ error: 'Database not ready' })
+    }
+
+    const checkoutRequestId = req.query.checkoutRequestId
+    
+    if (!checkoutRequestId) {
+      return res.status(400).json({ error: 'Missing checkoutRequestId parameter' })
+    }
+
+    console.log(`📱 Callback status check: ${checkoutRequestId}`)
+
+    // Look up queue entry by checkout request ID (stored as mpesaTransactionId)
+    const entry = await db
+      .select({
+        id: queueEntries.id,
+        isGolden: queueEntries.isGolden,
+        mpesaStatus: queueEntries.mpesaStatus,
+        mpesaTransactionId: queueEntries.mpesaTransactionId,
+        mpesaPaidAt: queueEntries.mpesaPaidAt,
+        goldenTicketRef: queueEntries.goldenTicketRef,
+        status: queueEntries.status,
+      })
+      .from(queueEntries)
+      .where(eq(queueEntries.mpesaTransactionId, checkoutRequestId))
+      .limit(1)
+      .then(rows => rows[0] || null)
+
+    if (!entry) {
+      // Not found yet - callback may still be in flight
+      console.log(`⏳ No entry found yet for: ${checkoutRequestId}`)
+      return res.status(404).json({ 
+        error: 'Transaction not found', 
+        checkoutRequestId 
+      })
+    }
+
+    // Found - return current status
+    if (entry.mpesaStatus === 'success') {
+      console.log(`✅ Payment SUCCESS: ${entry.goldenTicketRef}`)
+    } else if (entry.mpesaStatus === 'failed') {
+      console.log(`❌ Payment FAILED: ${checkoutRequestId}`)
+    } else {
+      console.log(`⏳ Payment PENDING: ${checkoutRequestId}`)
+    }
+
+    res.status(200).json({
+      success: true,
+      queueId: entry.id,
+      isGolden: entry.isGolden,
+      mpesaStatus: entry.mpesaStatus,
+      mpesaTransactionId: entry.mpesaTransactionId,
+      goldenTicketRef: entry.goldenTicketRef,
+      mpesaPaidAt: entry.mpesaPaidAt,
+      status: entry.status,
+    })
+  } catch (error) {
+    console.error('❌ Error checking callback status:', error)
+    res.status(500).json({ error: 'Internal server error' })
+  }
+})
+
 // GET /api/queue/mpesa-callback - Health check / endpoint verification
 app.get('/api/queue/mpesa-callback', (req, res) => {
   console.log('INFO: GET /api/queue/mpesa-callback - Health check')
