@@ -502,11 +502,17 @@ function StudentDashboard() {
           }
           
           if (statusRes.ok) {
-            const status = await statusRes.json()
+            const response = await statusRes.json()
+            const { mpesaStatus, feedback } = response
             
-            if (status.mpesaStatus === 'success') {
+            // Display feedback message to user
+            if (feedback?.message) {
+              console.log(`📲 Feedback: ${feedback.message}`)
+            }
+            
+            if (mpesaStatus === 'success' || feedback?.isSuccessful) {
               console.log('✅ Payment successful! Callback received and verified.')
-              console.log(`   Receipt: ${status.receiptNumber || 'N/A'}`)
+              console.log(`   Receipt: ${response.receiptNumber || 'N/A'}`)
               clearInterval(pollInterval)
               setMpesaStatus('success')
               setGoldenSuccess(true)
@@ -517,12 +523,15 @@ function StudentDashboard() {
                 setShowGoldenModal(false)
                 queryClient.invalidateQueries({ queryKey: ['service-stats'] })
               }, 3000)
-            } else if (status.mpesaStatus === 'failed') {
+            } else if (mpesaStatus === 'failed' || feedback?.isFailed) {
               console.error('❌ Payment failed - callback received.')
               clearInterval(pollInterval)
               setMpesaStatus('failed')
               setGoldenLoading(false)
-              setGoldenError('❌ Payment was cancelled or failed. Please check your M-Pesa message and try again.')
+              setGoldenError(feedback?.message || '❌ Payment was cancelled or failed. Please check your M-Pesa message and try again.')
+            } else if (mpesaStatus === 'pending' || feedback?.isPending) {
+              // Still pending, keep polling
+              console.log(`   Poll ${attempts}/${MAX_ATTEMPTS}: ${feedback?.message || 'Waiting for callback...'}`)
             }
             // If still 'pending', keep polling (do nothing)
           } else if (statusRes.status === 404) {

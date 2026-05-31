@@ -1323,7 +1323,7 @@ app.get('/api/queue/:id/mpesa-status', async (req, res) => {
       return res.status(400).json({ error: 'Invalid queue entry ID' })
     }
 
-    console.log(`?? Checking M-Pesa status for queue entry ${id}`)
+    console.log(`📍 Checking M-Pesa status for queue entry ${id}`)
 
     const entry = await db
       .select({
@@ -1344,19 +1344,56 @@ app.get('/api/queue/:id/mpesa-status', async (req, res) => {
       return res.status(404).json({ error: 'Queue entry not found' })
     }
 
-    // Log status
-    if (entry.mpesaStatus === 'success') {
-      console.log(`? M-Pesa Payment SUCCESS for queue ${id}: ${entry.goldenTicketRef}`)
-    } else if (entry.mpesaStatus === 'failed') {
-      console.log(`? M-Pesa Payment FAILED for queue ${id}`)
-    } else {
-      console.log(`? M-Pesa Payment PENDING for queue ${id} (waiting for callback)`)
+    // Build comprehensive feedback object
+    const feedback = {
+      isPending: entry.mpesaStatus === 'pending',
+      isSuccessful: entry.isGolden && entry.mpesaStatus === 'success',
+      isFailed: entry.mpesaStatus === 'failed',
+      message: entry.isGolden 
+        ? entry.mpesaStatus === 'success'
+          ? '✅ Golden ticket activated! You now have priority status.'
+          : entry.mpesaStatus === 'failed'
+          ? '❌ Payment was cancelled or failed. Please try again.'
+          : '⏳ Waiting for M-Pesa response... Complete payment on your phone.'
+        : entry.mpesaStatus === 'success'
+        ? '✅ Payment successful!'
+        : entry.mpesaStatus === 'failed'
+        ? '❌ Payment failed. Please try again.'
+        : '⏳ Waiting for payment confirmation...'
     }
 
-    res.status(200).json(entry)
+    // Log status
+    if (entry.mpesaStatus === 'success') {
+      console.log(`✅ M-Pesa Payment SUCCESS for queue ${id}: ${entry.goldenTicketRef}`)
+    } else if (entry.mpesaStatus === 'failed') {
+      console.log(`❌ M-Pesa Payment FAILED for queue ${id}`)
+    } else {
+      console.log(`⏳ M-Pesa Payment PENDING for queue ${id} (waiting for callback)`)
+    }
+
+    res.status(200).json({
+      id: entry.id,
+      isGolden: entry.isGolden,
+      mpesaStatus: entry.mpesaStatus,
+      mpesaTransactionId: entry.mpesaTransactionId,
+      mpesaPaidAt: entry.mpesaPaidAt,
+      goldenTicketRef: entry.goldenTicketRef,
+      status: entry.status,
+      feedback, // ← Comprehensive feedback object
+      success: true,
+    })
   } catch (error) {
-    console.error('? Error checking M-Pesa status:', error)
-    res.status(500).json({ error: 'Internal server error' })
+    console.error('❌ Error checking M-Pesa status:', error)
+    res.status(500).json({ 
+      error: 'Internal server error',
+      feedback: {
+        isPending: false,
+        isSuccessful: false,
+        isFailed: true,
+        message: '❌ Error checking payment status. Please try again.'
+      },
+      success: false
+    })
   }
 })
 
@@ -1601,10 +1638,22 @@ app.get('/api/debug', (req, res) => {
 })
 
 // SPA fallback - serve index.html for all unknown routes (both dev and production)
+// PROTECTION: Must NOT serve SPA for /api/* routes - these should return 404 if not matched above
 app.get('*', (req, res) => {
+  // PROTECTION: Prevent SPA fallback from intercepting API routes
+  if (req.path.startsWith('/api/')) {
+    console.warn(`API route not found: ${req.method} ${req.path}`)
+    return res.status(404).json({ 
+      error: 'Not found',
+      message: `API endpoint ${req.method} ${req.path} does not exist`,
+      path: req.path
+    })
+  }
+
+  // Serve SPA for all other routes
   if (NODE_ENV === 'production') {
     const indexPath = path.join(__dirname, 'dist', 'index.html')
-    console.log(`ðŸ“„ Serving SPA fallback to ${req.path} from dist`)
+    console.log(`Serving SPA fallback to ${req.path} from dist`)
     res.sendFile(indexPath, (err) => {
       if (err) {
         console.error('Error serving index.html:', err)
@@ -1702,6 +1751,7 @@ startServer().catch((error) => {
   console.error('Failed to start server:', error)
   process.exit(1)
 })
+
 
 
 

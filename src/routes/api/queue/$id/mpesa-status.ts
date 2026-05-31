@@ -28,9 +28,49 @@ export async function GET(request: Request, { params }: { params: { id: string }
       return json({ error: 'Queue entry not found' }, { status: 404 })
     }
 
-    return json(entry)
+    // Build comprehensive feedback object
+    const feedback = {
+      isPending: entry.mpesaStatus === 'pending',
+      isSuccessful: entry.isGolden && entry.mpesaStatus === 'success',
+      isFailed: entry.mpesaStatus === 'failed',
+      message: entry.isGolden 
+        ? entry.mpesaStatus === 'success'
+          ? '✅ Golden ticket activated! You now have priority status.'
+          : entry.mpesaStatus === 'failed'
+          ? '❌ Payment was cancelled or failed. Please try again.'
+          : '⏳ Waiting for M-Pesa response... Complete payment on your phone.'
+        : entry.mpesaStatus === 'success'
+        ? '✅ Payment successful!'
+        : entry.mpesaStatus === 'failed'
+        ? '❌ Payment failed. Please try again.'
+        : '⏳ Waiting for payment confirmation...'
+    }
+
+    return json(
+      {
+        id: entry.id,
+        isGolden: entry.isGolden,
+        mpesaStatus: entry.mpesaStatus,
+        mpesaTransactionId: entry.mpesaTransactionId,
+        mpesaPaidAt: entry.mpesaPaidAt,
+        goldenTicketRef: entry.goldenTicketRef,
+        status: entry.status,
+        feedback, // ← Comprehensive feedback object
+        success: true,
+      },
+      { status: 200 }
+    )
   } catch (error) {
     console.error('Error checking M-Pesa status:', error)
-    return json({ error: 'Internal server error' }, { status: 500 })
+    return json({ 
+      error: 'Internal server error',
+      feedback: {
+        isPending: false,
+        isSuccessful: false,
+        isFailed: true,
+        message: '❌ Error checking payment status. Please try again.'
+      },
+      success: false
+    }, { status: 500 })
   }
 }
