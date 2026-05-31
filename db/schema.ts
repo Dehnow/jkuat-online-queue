@@ -20,7 +20,6 @@ export const queueEntries = pgTable("queue_entries", {
   // Golden ticket fields
   isGolden: boolean("is_golden").notNull().default(false),
   goldenTicketRef: text("golden_ticket_ref"),
-  canUpgradeToGolden: boolean("can_upgrade_to_golden").notNull().default(true), // Can only upgrade the most recent ticket
   mpesaTransactionId: text("mpesa_transaction_id"),
   mpesaStatus: mpesaStatusEnum("mpesa_status"),
   mpesaPaidAt: timestamp("mpesa_paid_at"),

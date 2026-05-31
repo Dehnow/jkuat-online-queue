@@ -56,9 +56,6 @@ export async function GET(request: Request, { params }: { params: { id: string }
       goldenTicketRef: entry.goldenTicketRef,
       mpesaStatus: entry.mpesaStatus,
       mpesaPaidAt: entry.mpesaPaidAt,
-      // Golden ticket eligibility - only most recent ticket can be upgraded
-      canUpgradeToGolden: entry.canUpgradeToGolden,
-      goldenTicketEligible: entry.canUpgradeToGolden && !entry.isGolden,
     })
   } catch (error) {
     console.error('Queue GET/:id error:', error)

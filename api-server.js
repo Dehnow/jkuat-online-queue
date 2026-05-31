@@ -7,6 +7,7 @@ import { eq, and, or, asc, desc, count as dbCount, sql } from 'drizzle-orm'
 import { pgTable, serial, text, timestamp, integer, pgEnum, boolean } from 'drizzle-orm/pg-core'
 import path from 'path'
 import { fileURLToPath } from 'url'
+import { registerMpesaRoutes } from './mpesa.js'
 
 // Load environment variables - prioritize .env.local for development
 const NODE_ENV_INITIAL = process.env.NODE_ENV || 'development'
@@ -129,7 +130,6 @@ const queueEntries = pgTable('queue_entries', {
   mpesaTransactionId: text('mpesa_transaction_id'),
   mpesaStatus: mpesaStatusEnum('mpesa_status'),
   mpesaPaidAt: timestamp('mpesa_paid_at'),
-  canUpgradeToGolden: boolean('can_upgrade_to_golden').notNull().default(true),
 })
 
 const offices = pgTable('offices', {
@@ -191,7 +191,22 @@ async function retryWithBackoff(fn, maxRetries = 2, context = '') {
       return await fn()
     } catch (error) {
       lastError = error
-      if (attempt <= maxRetries) {
+      
+      // Check for AbortError (timeout) or transient errors
+      const isTransient = error.name === 'AbortError' || 
+                         error.code === 'ECONNREFUSED' || 
+                         error.code === 'ETIMEDOUT' ||
+                         error.code === 'ECONNRESET' ||
+                         error.message?.includes('timeout') ||
+                         error.message?.includes('Transient') ||
+                         error.message?.includes('system error')
+      
+      if (attempt <= maxRetries && isTransient) {
+        const delay = Math.pow(2, attempt - 1) * 1000
+        console.warn(`  ⚠️  Failed: ${error.message}. Retrying in ${delay}ms...`)
+        await new Promise(r => setTimeout(r, delay))
+      } else if (attempt <= maxRetries) {
+        // Non-transient error, but still retry
         const delay = Math.pow(2, attempt - 1) * 1000
         console.warn(`  ⚠️  Failed: ${error.message}. Retrying in ${delay}ms...`)
         await new Promise(r => setTimeout(r, delay))
@@ -533,8 +548,7 @@ app.post('/api/queue', async (req, res) => {
       message: 'You can upgrade this ticket to a Golden Ticket for priority access!'
     })
   } catch (error) {
-    console.error('ERROR: Error creating queue entry:', error.message)
-    console.error('STACK:', error.stack)
+    console.error('Error creating queue entry:', error)
     res.status(500).json({ error: 'Internal server error', details: error.message })
   }
 })
@@ -1209,30 +1223,144 @@ app.post('/api/queue/:id/mpesa-pay', async (req, res) => {
         let accessToken = null
         try {
           accessToken = await retryWithBackoff(async () => {
-            const tokenResponse = await fetch(authUrl, {
-              method: 'GET',
-              headers: {
-                'Authorization': `Basic ${auth}`,
-                'Content-Type': 'application/json'
-              },
-              timeout: 10000
-            })
+            // Use AbortController for proper timeout handling
+            const controller = new AbortController()
+            const timeoutId = setTimeout(() => controller.abort(), 20000) // 20 second timeout for network issues
 
-            const tokenData = await tokenResponse.json()
+            let tokenResponse = null
+            let responseText = ''
             
-            if (!tokenResponse.ok) {
-              const errorMsg = tokenData?.error_description || tokenData?.error || tokenResponse.statusText
-              throw new Error(`HTTP ${tokenResponse.status}: ${errorMsg}`)
+            try {
+              // Step 1: Make the fetch request with proper error handling
+              console.log(`📡 Initiating M-Pesa token request to: ${authUrl}`)
+              tokenResponse = await fetch(authUrl, {
+                method: 'GET',
+                headers: {
+                  'Authorization': `Basic ${auth}`,
+                  'Content-Type': 'application/json',
+                  'Accept': 'application/json',
+                  'User-Agent': 'JKUAT-Queue/1.0'
+                },
+                signal: controller.signal
+              })
+              
+              // Log HTTP status and headers immediately
+              console.log(`📡 M-Pesa token endpoint responded: HTTP ${tokenResponse.status}`)
+              console.log(`📡 Response headers:`, {
+                contentType: tokenResponse.headers.get('content-type'),
+                contentLength: tokenResponse.headers.get('content-length'),
+                status: tokenResponse.status
+              })
+              
+              // Step 2: Read response body safely with size limit check
+              try {
+                const contentLength = tokenResponse.headers.get('content-length')
+                if (contentLength && parseInt(contentLength) === 0) {
+                  console.error(`❌ M-Pesa returned empty response (Content-Length: 0, status: ${tokenResponse.status})`)
+                  throw new Error(`Empty response body from M-Pesa (HTTP ${tokenResponse.status})`)
+                }
+                
+                responseText = await tokenResponse.text()
+              } catch (readError) {
+                console.error(`❌ Failed to read M-Pesa response stream: ${readError.message}`)
+                throw new Error(`Failed to read response body: ${readError.message}`)
+              }
+              
+              // Log response details for debugging
+              console.log(`📡 M-Pesa response body size: ${responseText.length} bytes`)
+              
+              // Step 3: Validate response is not empty BEFORE checking status
+              if (!responseText || responseText.trim().length === 0) {
+                console.error(`❌ M-Pesa returned empty/whitespace response (status: ${tokenResponse.status})`)
+                console.error(`📊 Response bytes: [${responseText.split('').map(c => c.charCodeAt(0)).join(', ')}]`)
+                throw new Error(`Empty response body from M-Pesa (HTTP ${tokenResponse.status})`)
+              }
+              
+              // Step 4: Check HTTP status code AFTER confirming we have response body
+              if (!tokenResponse.ok) {
+                console.error(`❌ M-Pesa returned HTTP error: ${tokenResponse.status}`)
+                console.error(`📄 Error response preview: ${responseText.substring(0, 500)}`)
+                
+                // Try to extract error details if response is JSON
+                let errorMsg = `HTTP ${tokenResponse.status}`
+                try {
+                  const errorData = JSON.parse(responseText)
+                  errorMsg = errorData.error_description || errorData.error || errorMsg
+                  console.error(`📋 M-Pesa error details:`, JSON.stringify(errorData))
+                } catch (parseErr) {
+                  // Not JSON, use raw response
+                  errorMsg = responseText.substring(0, 200).trim() || errorMsg
+                  console.error(`📝 M-Pesa error (non-JSON): ${errorMsg}`)
+                }
+                throw new Error(`M-Pesa auth failed: ${errorMsg}`)
+              }
+              
+              // Step 5: Validate content-type BEFORE parsing JSON
+              const contentType = (tokenResponse.headers.get('content-type') || '').toLowerCase()
+              const isJsonLike = contentType.includes('application/json') || 
+                                contentType.includes('application/ld+json') ||
+                                contentType.includes('text/plain') || // Some servers return JSON as text/plain
+                                !contentType // If no content-type header, assume JSON
+              
+              if (!isJsonLike) {
+                console.error(`❌ M-Pesa returned non-JSON content-type: ${contentType}`)
+                console.error(`📄 Response body (first 500 chars): ${responseText.substring(0, 500)}`)
+                throw new Error(`Invalid response content-type: ${contentType}. Expected JSON.`)
+              }
+              
+              // Step 6: Parse JSON response with enhanced error handling
+              let tokenData = null
+              try {
+                // Trim whitespace before parsing
+                const trimmedResponse = responseText.trim()
+                if (!trimmedResponse) {
+                  console.error(`❌ Response is only whitespace after trim`)
+                  throw new Error(`Response body is only whitespace`)
+                }
+                
+                tokenData = JSON.parse(trimmedResponse)
+                console.log(`✅ M-Pesa token response successfully parsed`)
+                console.log(`📋 Token response keys:`, Object.keys(tokenData).join(', '))
+              } catch (parseError) {
+                console.error(`❌ Failed to parse M-Pesa JSON response: ${parseError.message}`)
+                console.error(`📊 Raw response length: ${responseText.length} bytes`)
+                console.error(`📄 Response text (first 1000 chars): ${responseText.substring(0, 1000)}`)
+                console.error(`📊 Byte sequence (first 50): ${responseText.substring(0, 50).split('').map(c => c.charCodeAt(0)).join(', ')}`)
+                throw new Error(`Invalid JSON from M-Pesa: ${parseError.message}`)
+              }
+              
+              // Step 7: Validate access_token exists in parsed response
+              if (!tokenData || typeof tokenData !== 'object') {
+                console.error(`❌ M-Pesa response is not an object. Type: ${typeof tokenData}`)
+                throw new Error(`Invalid response structure from M-Pesa`)
+              }
+              
+              if (!tokenData.access_token) {
+                const errorMsg = tokenData.error_description || tokenData.error || 'No access_token field in response'
+                console.error(`❌ M-Pesa response missing access_token field`)
+                console.error(`📋 Response structure:`, JSON.stringify(tokenData, null, 2).substring(0, 500))
+                throw new Error(`M-Pesa invalid response: ${errorMsg}`)
+              }
+              
+              console.log(`✅ M-Pesa access token obtained successfully (${tokenData.access_token.substring(0, 20)}...)`)
+              return tokenData.access_token
+              
+            } catch (error) {
+              // Enhance error context
+              if (error.name === 'AbortError') {
+                throw new Error(`M-Pesa token request timeout (20s) - network may be slow or endpoint unreachable`)
+              } else if (error.code === 'ECONNREFUSED') {
+                throw new Error(`M-Pesa endpoint connection refused - check network connectivity`)
+              } else if (error.code === 'ETIMEDOUT') {
+                throw new Error(`M-Pesa endpoint connection timeout`)
+              }
+              throw error
+            } finally {
+              clearTimeout(timeoutId)
             }
-
-            if (!tokenData.access_token) {
-              throw new Error('No access token in response')
-            }
-
-            return tokenData.access_token
-          }, 2, 'Requesting M-Pesa access token')
+          }, 3, 'Requesting M-Pesa access token')
         } catch (tokenError) {
-          console.error(`❌ Failed to get access token after retries:`, tokenError.message)
+          console.error(`❌ Failed to get access token after retries: ${tokenError.message}`)
           throw new Error(`M-Pesa authentication failed: ${tokenError.message}`)
         }
 
@@ -1271,29 +1399,138 @@ app.post('/api/queue/:id/mpesa-pay', async (req, res) => {
 
         // Call M-Pesa STK Push WITH RETRY
         const stkData = await retryWithBackoff(async () => {
-          const stkResponse = await fetch('https://api.safaricom.co.ke/mpesa/stkpush/v1/processrequest', {
-            method: 'POST',
-            headers: {
-              'Authorization': `Bearer ${accessToken}`,
-              'Content-Type': 'application/json'
-            },
-            body: JSON.stringify(stkPayload),
-            timeout: 10000
-          })
+          // Use AbortController for proper timeout handling
+          const controller = new AbortController()
+          const timeoutId = setTimeout(() => controller.abort(), 25000) // 25 second timeout for STK
 
-          const data = await stkResponse.json()
+          let stkResponse = null
+          let responseText = ''
 
-          // Check for success or transient errors
-          if (data.ResponseCode === '0' || data.errorCode === '0') {
-            return data
-          } else if (data.ResponseCode === '8' || data.ResponseDescription?.includes('system')) {
-            // System error - retry
-            throw new Error(`Transient M-Pesa system error (${data.ResponseCode}): ${data.ResponseDescription}`)
-          } else {
-            // Permanent error - don't retry
-            throw new Error(`[PERMANENT] Code ${data.ResponseCode}: ${data.ResponseDescription}`)
+          try {
+            // Step 1: Make the STK Push request
+            console.log(`  📱 Initiating STK Push to ${phoneNumber}...`)
+            stkResponse = await fetch('https://api.safaricom.co.ke/mpesa/stkpush/v1/processrequest', {
+              method: 'POST',
+              headers: {
+                'Authorization': `Bearer ${accessToken}`,
+                'Content-Type': 'application/json',
+                'Accept': 'application/json',
+                'User-Agent': 'JKUAT-Queue/1.0'
+              },
+              body: JSON.stringify(stkPayload),
+              signal: controller.signal
+            })
+
+            console.log(`  📨 STK Push endpoint responded: HTTP ${stkResponse.status}`)
+            console.log(`  📨 Response headers:`, {
+              contentType: stkResponse.headers.get('content-type'),
+              contentLength: stkResponse.headers.get('content-length'),
+              status: stkResponse.status
+            })
+
+            // Step 2: Read response body with proper error handling
+            try {
+              const contentLength = stkResponse.headers.get('content-length')
+              if (contentLength && parseInt(contentLength) === 0) {
+                console.error(`  ❌ M-Pesa STK returned empty response (Content-Length: 0, status: ${stkResponse.status})`)
+                throw new Error(`Empty response body from M-Pesa STK endpoint (HTTP ${stkResponse.status})`)
+              }
+              
+              responseText = await stkResponse.text()
+            } catch (readError) {
+              console.error(`  ❌ Failed to read STK response stream: ${readError.message}`)
+              throw new Error(`Failed to read STK response body: ${readError.message}`)
+            }
+
+            console.log(`  📨 STK response body size: ${responseText.length} bytes`)
+
+            // Step 3: Validate response is not empty BEFORE checking HTTP status
+            if (!responseText || responseText.trim().length === 0) {
+              console.error(`  ❌ M-Pesa STK returned empty/whitespace response (status: ${stkResponse.status})`)
+              console.error(`  📊 Response bytes: [${responseText.split('').map(c => c.charCodeAt(0)).join(', ')}]`)
+              throw new Error(`Empty response body from M-Pesa STK endpoint (HTTP ${stkResponse.status})`)
+            }
+
+            // Step 4: Validate content-type BEFORE parsing JSON
+            const contentType = (stkResponse.headers.get('content-type') || '').toLowerCase()
+            const isJsonLike = contentType.includes('application/json') || 
+                              contentType.includes('application/ld+json') ||
+                              contentType.includes('text/plain') ||
+                              !contentType // If no content-type, assume JSON
+
+            if (!isJsonLike) {
+              console.error(`  ❌ M-Pesa STK returned non-JSON content-type: ${contentType}`)
+              console.error(`  📄 Response body (first 500 chars): ${responseText.substring(0, 500)}`)
+              throw new Error(`Invalid STK response content-type: ${contentType}. Expected JSON.`)
+            }
+
+            // Step 5: Parse JSON response with enhanced error handling
+            let data = null
+            try {
+              const trimmedResponse = responseText.trim()
+              if (!trimmedResponse) {
+                console.error(`  ❌ STK Response is only whitespace after trim`)
+                throw new Error(`STK Response body is only whitespace`)
+              }
+              
+              data = JSON.parse(trimmedResponse)
+              console.log(`  ✅ M-Pesa STK response successfully parsed`)
+              console.log(`  📋 STK response keys:`, Object.keys(data).join(', '))
+            } catch (parseError) {
+              console.error(`  ❌ Failed to parse STK response as JSON: ${parseError.message}`)
+              console.error(`  📊 Raw response length: ${responseText.length} bytes`)
+              console.error(`  📄 Response text (first 1000 chars): ${responseText.substring(0, 1000)}`)
+              console.error(`  📊 Byte sequence (first 50): ${responseText.substring(0, 50).split('').map(c => c.charCodeAt(0)).join(', ')}`)
+              throw new Error(`Invalid JSON from M-Pesa STK: ${parseError.message}`)
+            }
+
+            // Step 6: Check HTTP status AFTER validating response body exists
+            if (!stkResponse.ok && stkResponse.status >= 400) {
+              console.error(`  ❌ M-Pesa STK returned HTTP error: ${stkResponse.status}`)
+              console.error(`  📋 Error response:`, JSON.stringify(data, null, 2).substring(0, 500))
+              const errorMsg = data.ResponseDescription || data.error || `HTTP ${stkResponse.status}`
+              throw new Error(`M-Pesa STK failed: ${errorMsg}`)
+            }
+
+            // Step 7: Validate response structure and check for success
+            if (!data || typeof data !== 'object') {
+              console.error(`  ❌ STK response is not an object. Type: ${typeof data}`)
+              throw new Error(`Invalid STK response structure from M-Pesa`)
+            }
+
+            const responseCode = data.ResponseCode || data.errorCode
+            console.log(`  📋 STK Response Code: ${responseCode}`)
+            console.log(`  📋 STK Response Description: ${data.ResponseDescription || data.errorMessage || 'N/A'}`)
+            
+            // Check for success or transient errors
+            if (responseCode === '0' || responseCode === 0) {
+              console.log(`  ✅ STK Push success code received (ResponseCode: 0)`)
+              console.log(`  📋 CheckoutRequestID: ${data.CheckoutRequestID}`)
+              return data
+            } else if (stkResponse.status >= 500 || responseCode === '8' || data.ResponseDescription?.includes('system')) {
+              // System error - this is transient, should retry
+              console.warn(`  ⚠️  Transient M-Pesa error (Code: ${responseCode}): ${data.ResponseDescription}`)
+              throw new Error(`Transient M-Pesa error (${responseCode}): ${data.ResponseDescription}`)
+            } else {
+              // Permanent error - don't retry (but log it before throwing)
+              console.error(`  ❌ Permanent M-Pesa error (Code: ${responseCode}): ${data.ResponseDescription}`)
+              throw new Error(`[PERMANENT] M-Pesa STK error ${responseCode}: ${data.ResponseDescription}`)
+            }
+
+          } catch (error) {
+            // Enhance error context for network issues
+            if (error.name === 'AbortError') {
+              throw new Error(`M-Pesa STK Push request timeout (25s) - network may be slow or endpoint unreachable`)
+            } else if (error.code === 'ECONNREFUSED') {
+              throw new Error(`M-Pesa STK endpoint connection refused - check network connectivity`)
+            } else if (error.code === 'ETIMEDOUT') {
+              throw new Error(`M-Pesa STK endpoint connection timeout`)
+            }
+            throw error
+          } finally {
+            clearTimeout(timeoutId)
           }
-        }, 2, 'Sending STK Push to M-Pesa')
+        }, 3, 'Sending STK Push to M-Pesa')
 
         if (stkData.ResponseCode === '0' || stkData.errorCode === '0') {
           // STK Push initiated successfully
@@ -1332,209 +1569,6 @@ app.post('/api/queue/:id/mpesa-pay', async (req, res) => {
     console.error('Error initiating M-Pesa payment:', error)
     return res.status(500).json({ error: 'Internal server error', details: error.message })
   }
-})
-
-// POST /api/queue/golden-ticket - Mark ticket as golden (for track page)
-app.post('/api/queue/golden-ticket', async (req, res) => {
-  try {
-    if (!db) return res.status(503).json({ error: 'Database not ready' })
-    
-    const { queueId, action } = req.body
-
-    if (!queueId) {
-      return res.status(400).json({ error: 'Missing queue ID' })
-    }
-
-    if (action !== 'mark-golden') {
-      return res.status(400).json({ error: 'Invalid action' })
-    }
-
-    // Get queue entry
-    const entry = await db
-      .select()
-      .from(queueEntries)
-      .where(eq(queueEntries.id, Number(queueId)))
-      .limit(1)
-      .then(rows => rows[0] || null)
-
-    if (!entry) {
-      return res.status(404).json({ error: 'Queue entry not found' })
-    }
-
-    // Check if already golden
-    if (entry.isGolden) {
-      return res.status(429).json({ 
-        error: 'Already a golden ticket',
-        message: `This ticket is already marked as golden (${entry.goldenTicketRef})`
-      })
-    }
-
-    // Generate golden ticket reference
-    const date = new Date().toISOString().split('T')[0].replace(/-/g, '')
-    const sequence = await db
-      .select({ count: sql`cast(count(*) as integer)` })
-      .from(queueEntries)
-      .where(and(
-        eq(queueEntries.serviceType, entry.serviceType),
-        eq(queueEntries.isGolden, true),
-        sql`DATE(${queueEntries.createdAt}) = CURRENT_DATE`
-      ))
-      .then(rows => (rows[0]?.count ?? 0) + 1)
-
-    const serviceCode = entry.serviceType === 'registrar' ? 'REG' : entry.serviceType === 'finance' ? 'FIN' : 'ICT'
-    const goldenRef = `GT-${serviceCode}-${date}-${String(sequence).padStart(3, '0')}`
-
-    // Update entry to mark as golden
-    await db.update(queueEntries)
-      .set({
-        isGolden: true,
-        goldenTicketRef: goldenRef,
-        mpesaStatus: 'pending',
-      })
-      .where(eq(queueEntries.id, Number(queueId)))
-
-    console.log(`✅ Ticket ${queueId} marked as golden: ${goldenRef}`)
-
-    return res.json({
-      success: true,
-      message: 'Golden ticket activated. Proceed to payment.',
-      goldenTicketData: {
-        id: entry.id,
-        goldenTicketRef: goldenRef,
-        queueNumber: entry.queueNumber,
-        amount: 50,
-      },
-    })
-  } catch (error) {
-    console.error('Error marking golden ticket:', error)
-    return res.status(500).json({ error: 'Failed to process golden ticket request', details: error.message })
-  }
-})
-
-// POST /api/queue/mpesa - Initiate M-Pesa payment (for track page)
-app.post('/api/queue/mpesa', async (req, res) => {
-  try {
-    if (!db) return res.status(503).json({ error: 'Database not ready' })
-    
-    const { action, queueId, phoneNumber, amount, goldenRef } = req.body
-
-    if (action !== 'initiate-payment') {
-      return res.status(400).json({ error: 'Invalid action' })
-    }
-
-    if (!queueId || !phoneNumber || !goldenRef) {
-      return res.status(400).json({ error: 'Missing required fields' })
-    }
-
-    // Validate phone number
-    const normalizedPhone = phoneNumber.replace(/\D/g, '')
-    if (!normalizedPhone.match(/^254\d{9}$/)) {
-      return res.status(400).json({ error: 'Invalid phone number format' })
-    }
-
-    // Get queue entry
-    const entry = await db
-      .select()
-      .from(queueEntries)
-      .where(eq(queueEntries.id, Number(queueId)))
-      .limit(1)
-      .then(rows => rows[0] || null)
-
-    if (!entry) {
-      return res.status(404).json({ error: 'Queue entry not found' })
-    }
-
-    if (!entry.isGolden) {
-      return res.status(400).json({ error: 'Ticket is not marked as golden' })
-    }
-
-    // Proceed with M-Pesa payment
-    const timestamp = new Date().toISOString()
-      .replace(/[-:T.]/g, '').substring(0, 14)
-    
-    const shortCode = MPESA_CONFIG.isSandbox ? '174379' : MPESA_CONFIG.businessShortCode
-    const passkey = MPESA_CONFIG.isSandbox ? MPESA_CONFIG.sandboxPasskey : MPESA_CONFIG.passkey
-    const password = Buffer.from(`${shortCode}${passkey}${timestamp}`).toString('base64')
-    const baseUrl = MPESA_CONFIG.isSandbox 
-      ? 'https://sandbox.safaricom.co.ke'
-      : 'https://api.safaricom.co.ke'
-
-    // Get access token
-    const auth = Buffer.from(`${MPESA_CONFIG.consumerKey}:${MPESA_CONFIG.consumerSecret}`).toString('base64')
-    const tokenRes = await fetch(`${baseUrl}/oauth/v1/generate?grant_type=client_credentials`, {
-      method: 'GET',
-      headers: { Authorization: `Basic ${auth}` },
-      timeout: 10000,
-    })
-
-    if (!tokenRes.ok) {
-      throw new Error('Failed to get M-Pesa access token')
-    }
-
-    const tokenData = await tokenRes.json()
-    const token = tokenData.access_token
-
-    // Initiate STK push
-    const stkRes = await fetch(`${baseUrl}/mpesa/stkpush/v1/processrequest`, {
-      method: 'POST',
-      headers: {
-        Authorization: `Bearer ${token}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        BusinessShortCode: shortCode,
-        Password: password,
-        Timestamp: timestamp,
-        TransactionType: 'CustomerPayBillOnline',
-        Amount: amount || 50,
-        PartyA: normalizedPhone,
-        PartyB: shortCode,
-        PhoneNumber: normalizedPhone,
-        CallBackURL: MPESA_CONFIG.callbackUrl,
-        AccountReference: goldenRef,
-        TransactionDesc: `Golden Ticket - ${goldenRef}`,
-      }),
-      timeout: 10000,
-    })
-
-    const stkData = await stkRes.json()
-
-    if (stkData.ResponseCode === '0') {
-      // Update transaction ID
-      await db.update(queueEntries)
-        .set({
-          mpesaTransactionId: stkData.CheckoutRequestID,
-          mpesaStatus: 'pending',
-        })
-        .where(eq(queueEntries.id, Number(queueId)))
-
-      console.log(`✅ STK Push initiated for queue ${queueId}: ${stkData.CheckoutRequestID}`)
-
-      return res.json({
-        success: true,
-        message: 'M-Pesa prompt sent to your phone',
-        checkoutRequestId: stkData.CheckoutRequestID,
-      })
-    } else {
-      return res.status(400).json({
-        error: stkData.ResponseDescription || 'Failed to initiate payment',
-      })
-    }
-  } catch (error) {
-    console.error('Error initiating M-Pesa payment:', error)
-    return res.status(500).json({ error: 'Failed to initiate payment', details: error.message })
-  }
-})
-
-// GET /api/queue/mpesa-callback - Health check / endpoint verification
-app.get('/api/queue/mpesa-callback', (req, res) => {
-  console.log('INFO: GET /api/queue/mpesa-callback - Health check')
-  res.status(200).json({
-    status: 'ok',
-    message: 'M-Pesa callback endpoint is live',
-    method: 'POST',
-    note: 'This endpoint accepts POST requests from M-Pesa with callback data',
-  })
 })
 
 // POST /api/queue/mpesa-callback - Handle M-Pesa callback
@@ -1705,6 +1739,9 @@ async function startServer() {
     console.error('Ã¢ÂÅ’ Initial database connection failed:', error.message)
     console.warn('Ã¢Å¡Â Ã¯Â¸Â  Server will start but will attempt to reconnect...')
   }
+
+  // Register M-Pesa routes
+  registerMpesaRoutes(app, { db, tickets: queueEntries })
 
   // Start the HTTP server
   const server = app.listen(PORT, '0.0.0.0', () => {
