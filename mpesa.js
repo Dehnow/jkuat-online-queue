@@ -172,6 +172,56 @@ export function registerMpesaRoutes(app, deps = {}) {
     }
   })
 
+  // GET /api/mpesa/pending - Monitor pending STK push payments
+  app.get('/api/mpesa/pending', async (req, res) => {
+    try {
+      if (!db) return res.status(503).json({ error: 'Database not ready' })
+      
+      // Fetch all pending payment attempts
+      const pendingPayments = await db
+        .select({
+          id: queueEntries.id,
+          queueNumber: queueEntries.queueNumber,
+          serviceType: queueEntries.serviceType,
+          goldenTicketRef: queueEntries.goldenTicketRef,
+          mpesaStatus: queueEntries.mpesaStatus,
+          mpesaTransactionId: queueEntries.mpesaTransactionId,
+          createdAt: queueEntries.createdAt,
+          mpesaPaidAt: queueEntries.mpesaPaidAt,
+        })
+        .from(queueEntries)
+        .where(
+          and(
+            sql`${queueEntries.mpesaStatus} IS NOT NULL`,
+            sql`${queueEntries.mpesaTransactionId} IS NOT NULL`
+          )
+        )
+
+      const summary = {
+        pending: pendingPayments.filter(p => p.mpesaStatus === 'pending').length,
+        successful: pendingPayments.filter(p => p.mpesaStatus === 'success').length,
+        failed: pendingPayments.filter(p => p.mpesaStatus === 'failed').length,
+        total: pendingPayments.length,
+        payments: pendingPayments.map(p => ({
+          id: p.id,
+          queue: `#${p.queueNumber}`,
+          ref: p.goldenTicketRef,
+          status: p.mpesaStatus,
+          checkoutId: p.mpesaTransactionId?.substring(0, 8) + '...', // Abbreviated for display
+          initiated: p.createdAt ? new Date(p.createdAt).toLocaleTimeString() : 'N/A',
+          completed: p.mpesaPaidAt ? new Date(p.mpesaPaidAt).toLocaleTimeString() : 'N/A',
+        }))
+      }
+
+      console.log(`📊 Payment Monitoring: ${summary.pending} pending, ${summary.successful} successful, ${summary.failed} failed`)
+
+      return res.json(summary)
+    } catch (error) {
+      console.error('Error fetching pending payments:', error)
+      return res.status(500).json({ error: 'Internal server error' })
+    }
+  })
+
   // GET /api/queue/:id/mpesa-status - Check M-Pesa payment status
   app.get('/api/queue/:id/mpesa-status', async (req, res) => {
     try {
@@ -181,11 +231,12 @@ export function registerMpesaRoutes(app, deps = {}) {
       const entry = await db
         .select({
           id: queueEntries.id,
+          queueNumber: queueEntries.queueNumber,
           isGolden: queueEntries.isGolden,
+          goldenTicketRef: queueEntries.goldenTicketRef,
           mpesaStatus: queueEntries.mpesaStatus,
           mpesaTransactionId: queueEntries.mpesaTransactionId,
           mpesaPaidAt: queueEntries.mpesaPaidAt,
-          goldenTicketRef: queueEntries.goldenTicketRef,
           status: queueEntries.status,
         })
         .from(queueEntries)
@@ -197,7 +248,31 @@ export function registerMpesaRoutes(app, deps = {}) {
         return res.status(404).json({ error: 'Queue entry not found' })
       }
 
-      res.json(entry)
+      // Log status check for debugging
+      if (entry.mpesaStatus) {
+        console.log(`📊 Status check: Queue #${entry.queueNumber}, Golden=${entry.isGolden}, MpesaStatus=${entry.mpesaStatus}`)
+      }
+
+      res.json({
+        id: entry.id,
+        queueNumber: entry.queueNumber,
+        isGolden: entry.isGolden,
+        goldenTicketRef: entry.goldenTicketRef,
+        mpesaStatus: entry.mpesaStatus,  // 'pending', 'success', or 'failed'
+        mpesaPaidAt: entry.mpesaPaidAt,
+        status: entry.status,
+        // Additional feedback for frontend
+        feedback: {
+          isPending: entry.mpesaStatus === 'pending',
+          isSuccessful: entry.isGolden && entry.mpesaStatus === 'success',
+          isFailed: entry.mpesaStatus === 'failed',
+          message: entry.isGolden 
+            ? '✅ Golden ticket activated! You now have priority status.' 
+            : entry.mpesaStatus === 'failed'
+            ? '❌ Payment was cancelled or failed.'
+            : '⏳ Waiting for M-Pesa response...'
+        }
+      })
     } catch (error) {
       console.error('Error checking M-Pesa status:', error)
       res.status(500).json({ error: 'Internal server error' })
@@ -264,16 +339,20 @@ export function registerMpesaRoutes(app, deps = {}) {
           description: 'Golden Ticket',
         })
 
+        // Store the checkoutRequestId for later callback matching
         await db
           .update(queueEntries)
           .set({
             goldenTicketRef,
-            mpesaTransactionId: result.checkoutRequestId,
-            mpesaStatus: 'pending',
+            mpesaTransactionId: result.checkoutRequestId,  // CheckoutRequestID from Safaricom
+            mpesaStatus: 'pending',  // Waiting for STK response
           })
           .where(eq(queueEntries.id, Number(id)))
 
         console.log(`✅ STK Push initiated for ${goldenTicketRef}`)
+        console.log(`   CheckoutRequestID: ${result.checkoutRequestId}`)
+        console.log(`   Phone: ${phoneNorm}, Amount: KES ${GOLDEN_PRICE}`)
+        console.log(`   Queue ${id} now awaiting user PIN entry...`)
 
         return res.status(200).json({
           success: true,
@@ -284,7 +363,7 @@ export function registerMpesaRoutes(app, deps = {}) {
           goldenTicketRef,
         })
       } catch (error) {
-        console.error('[mpesa-pay]', error.message)
+        console.error(`❌ [STK-Pay] Failed to initiate STK push for queue ${id}:`, error.message)
         return res.status(500).json({ 
           error: 'STK push failed', 
           message: error.message 
@@ -305,83 +384,108 @@ export function registerMpesaRoutes(app, deps = {}) {
       }
 
       const callbackBody = req.body
-      console.log('📞 M-Pesa Callback received')
+      console.log('📞 M-Pesa Callback received from Safaricom')
 
       const stkCallback = callbackBody?.Body?.stkCallback || {}
       const { ResultCode, CheckoutRequestID, CallbackMetadata } = stkCallback
       const ResultDesc = stkCallback.ResultDesc || 'Unknown result'
 
       if (!CheckoutRequestID) {
-        console.warn('⚠️ No CheckoutRequestID in callback')
+        console.warn('⚠️ No CheckoutRequestID in callback - cannot process')
         return res.status(200).json({ success: false })
       }
 
-      // Extract metadata
+      console.log(`🔍 Lookup: CheckoutRequestID = ${CheckoutRequestID}, ResultCode = ${ResultCode}`)
+
+      // Extract metadata (transaction details, receipt number, etc.)
       let transactionDetails = {}
-      if (CallbackMetadata?.Item) {
+      if (CallbackMetadata?.Item && Array.isArray(CallbackMetadata.Item)) {
         CallbackMetadata.Item.forEach(item => {
           transactionDetails[item.Name] = item.Value
         })
       }
 
-      // Find queue entry by checkout request ID
-      let queueEntryId = null
-      const entries = await db
+      const receiptNumber = transactionDetails['MpesaReceiptNumber'] || null
+      const amount = transactionDetails['Amount'] || null
+      const phone = transactionDetails['PhoneNumber'] || null
+
+      // Find queue entry by checkout request ID (keep it as-is for linking)
+      const entry = await db
         .select()
         .from(queueEntries)
         .where(eq(queueEntries.mpesaTransactionId, CheckoutRequestID))
         .limit(1)
         .then(rows => rows[0] || null)
-      
-      if (entries) {
-        queueEntryId = entries.id
-      }
 
-      if (!queueEntryId) {
-        console.warn(`⚠️ Could not find queue entry for checkout: ${CheckoutRequestID}`)
+      if (!entry) {
+        console.warn(`⚠️ Queue entry NOT FOUND for CheckoutRequestID: ${CheckoutRequestID}`)
+        // Still return 200 to acknowledge receipt from Safaricom
         return res.status(200).json({ success: false })
       }
 
-      // Handle payment result
-      if (ResultCode === 0) {
-        const receiptNumber = transactionDetails['MpesaReceiptNumber'] || 'UNKNOWN'
-        
-        const entry = await db
-          .select()
-          .from(queueEntries)
-          .where(eq(queueEntries.id, queueEntryId))
-          .limit(1)
-          .then(rows => rows[0])
+      console.log(`📋 Found queue entry: ID=${entry.id}, GoldenRef=${entry.goldenTicketRef}, Status=${entry.mpesaStatus}`)
 
-        if (entry && !entry.isGolden) {
-          // Mark as golden
-          await db
-            .update(queueEntries)
-            .set({
-              isGolden: true,
-              mpesaTransactionId: receiptNumber,
-              mpesaStatus: 'success',
-              mpesaPaidAt: new Date(),
-            })
-            .where(eq(queueEntries.id, queueEntryId))
+      // Handle payment result based on ResultCode
+      if (ResultCode === 0 || ResultCode === '0') {
+        // SUCCESS: ResultCode 0 = User entered PIN successfully
+        console.log(`✅ M-Pesa payment SUCCESS for queue ${entry.id}`)
+        console.log(`   Receipt: ${receiptNumber}, Amount: KES ${amount}, Phone: ${phone}`)
 
-          console.log(`✅ Golden ticket activated: ${entry.goldenTicketRef} (Receipt: ${receiptNumber})`)
+        // Prevent duplicate processing - check if already marked as success
+        if (entry.mpesaStatus === 'success' && entry.isGolden) {
+          console.log(`   ℹ️  Already processed as golden ticket - ignoring duplicate callback`)
+          return res.status(200).json({ success: true })
         }
-      } else {
-        // Payment failed
+
+        // Mark ticket as golden (upgrade successful)
+        await db
+          .update(queueEntries)
+          .set({
+            isGolden: true,
+            mpesaStatus: 'success',
+            mpesaPaidAt: new Date(),
+            // Keep CheckoutRequestID in mpesaTransactionId for reference
+            // Optionally could add a receipt_number field in future
+          })
+          .where(eq(queueEntries.id, entry.id))
+
+        console.log(`🎉 Golden ticket ACTIVATED: ${entry.goldenTicketRef}`)
+        console.log(`   Queue #${entry.queueNumber} now has priority status`)
+
+      } else if (ResultCode === 1 || ResultCode === '1') {
+        // USER CANCELLED: ResultCode 1 = User cancelled the prompt
+        console.log(`⛔ M-Pesa prompt CANCELLED by user for queue ${entry.id}`)
+        
         await db
           .update(queueEntries)
           .set({
             mpesaStatus: 'failed',
           })
-          .where(eq(queueEntries.id, queueEntryId))
+          .where(eq(queueEntries.id, entry.id))
 
-        console.log(`❌ M-Pesa payment failed: ${ResultDesc}`)
+        console.log(`   Status updated to 'failed' - user did not complete payment`)
+
+      } else {
+        // OTHER FAILURE: Generic failure code
+        console.log(`❌ M-Pesa payment FAILED with ResultCode=${ResultCode}: ${ResultDesc}`)
+        
+        await db
+          .update(queueEntries)
+          .set({
+            mpesaStatus: 'failed',
+          })
+          .where(eq(queueEntries.id, entry.id))
+
+        console.log(`   Queue entry ${entry.id} payment status set to failed`)
       }
 
+      // Always return 200 OK to Safaricom (required by their API)
       return res.status(200).json({ success: true })
+
     } catch (error) {
-      console.error('Error processing M-Pesa callback:', error)
+      console.error('❌ Error processing M-Pesa callback:', error.message)
+      console.error('   Stack:', error.stack)
+      // Still return 200 to acknowledge receipt
       return res.status(200).json({ success: false })
     }
   })
