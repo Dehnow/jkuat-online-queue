@@ -129,6 +129,7 @@ const queueEntries = pgTable('queue_entries', {
   mpesaTransactionId: text('mpesa_transaction_id'),
   mpesaStatus: mpesaStatusEnum('mpesa_status'),
   mpesaPaidAt: timestamp('mpesa_paid_at'),
+  canUpgradeToGolden: boolean('can_upgrade_to_golden').notNull().default(true),
 })
 
 const offices = pgTable('offices', {
