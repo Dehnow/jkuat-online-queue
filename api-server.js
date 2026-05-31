@@ -181,6 +181,25 @@ async function initializeDatabase() {
   }
 }
 
+// Retry helper with exponential backoff
+async function retryWithBackoff(fn, maxRetries = 2, context = '') {
+  let lastError = null
+  for (let attempt = 1; attempt <= maxRetries + 1; attempt++) {
+    try {
+      console.log(`  [Attempt ${attempt}/${maxRetries + 1}] ${context}`)
+      return await fn()
+    } catch (error) {
+      lastError = error
+      if (attempt <= maxRetries) {
+        const delay = Math.pow(2, attempt - 1) * 1000
+        console.warn(`  ⚠️  Failed: ${error.message}. Retrying in ${delay}ms...`)
+        await new Promise(r => setTimeout(r, delay))
+      }
+    }
+  }
+  throw lastError
+}
+
 // Express app
 const app = express()
 
@@ -1168,40 +1187,40 @@ app.post('/api/queue/:id/mpesa-pay', async (req, res) => {
           `${MPESA_CONFIG.consumerKey}:${MPESA_CONFIG.consumerSecret}`
         ).toString('base64')
 
-        console.log(`DEBUG Token request with auth header (first 20 chars): ${auth.substring(0, 20)}...`)
+        let accessToken = null
+        try {
+          accessToken = await retryWithBackoff(async () => {
+            const tokenResponse = await fetch(authUrl, {
+              method: 'GET',
+              headers: {
+                'Authorization': `Basic ${auth}`,
+                'Content-Type': 'application/json'
+              },
+              timeout: 10000
+            })
 
-        const tokenResponse = await fetch(authUrl, {
-          method: 'GET',
-          headers: {
-            'Authorization': `Basic ${auth}`,
-            'Content-Type': 'application/json'
-          },
-          timeout: 10000
-        })
+            const tokenData = await tokenResponse.json()
+            
+            if (!tokenResponse.ok) {
+              const errorMsg = tokenData?.error_description || tokenData?.error || tokenResponse.statusText
+              throw new Error(`HTTP ${tokenResponse.status}: ${errorMsg}`)
+            }
 
-        const tokenData = await tokenResponse.json()
-        
-        if (!tokenResponse.ok) {
-          const errorMsg = tokenData?.error_description || tokenData?.error || tokenResponse.statusText
-          console.error(`ERROR Token request failed (${tokenResponse.status}): ${errorMsg}`)
-          throw new Error(`Token request failed: ${errorMsg}`)
+            if (!tokenData.access_token) {
+              throw new Error('No access token in response')
+            }
+
+            return tokenData.access_token
+          }, 2, 'Requesting M-Pesa access token')
+        } catch (tokenError) {
+          console.error(`❌ Failed to get access token after retries:`, tokenError.message)
+          throw new Error(`M-Pesa authentication failed: ${tokenError.message}`)
         }
 
-        const accessToken = tokenData.access_token
-
-        if (!accessToken) {
-          console.error('ERROR No access token in response. Response:', tokenData)
-          throw new Error('No access token received from Daraja. Invalid credentials or API error.')
-        }
-
-        // Prepare STK Push request
         const timestamp = new Date().toISOString().replace(/[^0-9]/g, '').slice(0, 14)
         const password = Buffer.from(
           `${MPESA_CONFIG.tillNumber}${MPESA_CONFIG.passkey}${timestamp}`
         ).toString('base64')
-
-        const checkoutRequestId = `${id}_${Date.now()}`
-        const stkPushUrl = 'https://api.safaricom.co.ke/mpesa/stkpush/v1/processrequest'
 
         // Format phone number to 254XXXXXXXXX format
         let phoneNumber = req.body.phoneNumber.replace(/\D/g, '') // Remove all non-digits
@@ -1220,94 +1239,74 @@ app.post('/api/queue/:id/mpesa-pay', async (req, res) => {
           Password: password,
           Timestamp: timestamp,
           TransactionType: 'CustomerPayBillOnline',
-          Amount: 50, // KES 50 for golden ticket
-          PartyA: phoneNumber, // Full phone number with country code (254XXXXXXXXX)
+          Amount: 50,
+          PartyA: phoneNumber,
           PartyB: MPESA_CONFIG.tillNumber,
-          PhoneNumber: phoneNumber, // Full phone number with country code
+          PhoneNumber: phoneNumber,
           CallBackURL: MPESA_CONFIG.callbackUrl,
           AccountReference: goldenTicketRef,
           TransactionDesc: 'Golden Ticket - Priority Queue Access'
         }
 
-        console.log(`DEBUG STK Push Payload - PartyA: ${phoneNumber}, Amount: 50, Callback: ${MPESA_CONFIG.callbackUrl}`)
+        console.log(`  📱 Sending STK Push to ${phoneNumber}...`)
 
-        // Call M-Pesa STK Push
-        const stkResponse = await fetch(stkPushUrl, {
-          method: 'POST',
-          headers: {
-            'Authorization': `Bearer ${accessToken}`,
-            'Content-Type': 'application/json'
-          },
-          body: JSON.stringify(stkPayload),
-          timeout: 10000
-        })
+        // Call M-Pesa STK Push WITH RETRY
+        const stkData = await retryWithBackoff(async () => {
+          const stkResponse = await fetch('https://api.safaricom.co.ke/mpesa/stkpush/v1/processrequest', {
+            method: 'POST',
+            headers: {
+              'Authorization': `Bearer ${accessToken}`,
+              'Content-Type': 'application/json'
+            },
+            body: JSON.stringify(stkPayload),
+            timeout: 10000
+          })
 
-        const stkData = await stkResponse.json()
+          const data = await stkResponse.json()
 
-        console.log(`DEBUG STK Response Status: ${stkResponse.status}`)
-        console.log(`DEBUG STK Response Data:`, JSON.stringify(stkData, null, 2))
+          // Check for success or transient errors
+          if (data.ResponseCode === '0' || data.errorCode === '0') {
+            return data
+          } else if (data.ResponseCode === '8' || data.ResponseDescription?.includes('system')) {
+            // System error - retry
+            throw new Error(`Transient M-Pesa system error (${data.ResponseCode}): ${data.ResponseDescription}`)
+          } else {
+            // Permanent error - don't retry
+            throw new Error(`[PERMANENT] Code ${data.ResponseCode}: ${data.ResponseDescription}`)
+          }
+        }, 2, 'Sending STK Push to M-Pesa')
 
         if (stkData.ResponseCode === '0' || stkData.errorCode === '0') {
           // STK Push initiated successfully
-          // Mark payment as pending in database
           await db
             .update(queueEntries)
             .set({
-              mpesaTransactionId: stkData.CheckoutRequestID || checkoutRequestId,
+              mpesaTransactionId: stkData.CheckoutRequestID,
               mpesaStatus: 'pending',
               goldenTicketRef,
             })
             .where(eq(queueEntries.id, Number(id)))
 
-          console.log(`✅ STK Push initiated (PRODUCTION): ${goldenTicketRef}`)
+          console.log(`✅ STK Push successful: ${goldenTicketRef}`)
           console.log(`   CheckoutRequestID: ${stkData.CheckoutRequestID}`)
           console.log(`   Phone: ${phoneNumber}`)
-          console.log(`   Amount: KES 50`)
 
           return res.status(200).json({
             success: true,
-            checkoutRequestId: stkData.CheckoutRequestID || checkoutRequestId,
+            checkoutRequestId: stkData.CheckoutRequestID,
             responseCode: stkData.ResponseCode || stkData.errorCode,
-            customerMessage: stkData.CustomerMessage || 'STK prompt sent to your phone. Enter your M-Pesa PIN to complete payment.',
-            message: 'STK push sent successfully. Waiting for user PIN entry...',
+            customerMessage: stkData.CustomerMessage || 'STK prompt sent. Enter your PIN.',
+            message: 'STK push sent successfully.',
             mpesaStatus: 'pending',
             goldenTicketRef,
             sandbox: false,
           })
         } else {
-          // STK Push failed - Detailed error logging
-          const responseCode = stkData.ResponseCode || stkData.errorCode || 'UNKNOWN'
-          const errorMsg = stkData.ResponseDescription || stkData.errorMessage || stkData.CustomerMessage || 'Unknown error'
-          
-          console.error(`❌ STK Push FAILED`)
-          console.error(`   Response Code: ${responseCode}`)
-          console.error(`   Error Message: ${errorMsg}`)
-          console.error(`   Phone: ${phoneNumber}`)
-          console.error(`   Shortcode: ${MPESA_CONFIG.tillNumber}`)
-          console.error(`   Callback URL: ${MPESA_CONFIG.callbackUrl}`)
-          console.error(`   Full Response:`, JSON.stringify(stkData, null, 2))
-          
-          // Map error codes to user-friendly messages
-          const errorCodeMap = {
-            '01': 'Invalid credentials - check CONSUMER_KEY and CONSUMER_SECRET in Render environment',
-            '08': 'System error from M-Pesa - try again later',
-            '14': 'Invalid phone number - check format',
-            '20': 'Invalid password - check PASSKEY in Render environment',
-            '25': 'Invalid account - check SHORTCODE in Render environment',
-            'timeout': 'M-Pesa API timeout - try again',
-          }
-          
-          const userMessage = errorCodeMap[responseCode] || `M-Pesa error ${responseCode}: ${errorMsg}`
-          
-          throw new Error(`STK Push failed: ${userMessage}`)
+          throw new Error(`STK Push failed: Code ${stkData.ResponseCode} - ${stkData.ResponseDescription}`)
         }
-      } catch (stkError) {
-        console.error('ERROR STK Push error:', stkError.message)
-        return res.status(500).json({
-          error: 'STK Push failed',
-          message: stkError.message || 'Failed to initiate M-Pesa payment',
-          details: NODE_ENV === 'development' ? stkError.toString() : undefined
-        })
+      } catch (error) {
+        console.error('ERROR Production STK Push error:', error.message)
+        throw error
       }
     }
   } catch (error) {

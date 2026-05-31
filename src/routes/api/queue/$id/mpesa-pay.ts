@@ -63,6 +63,34 @@ const HAS_REAL_CREDENTIALS = HAS_PRODUCTION_CREDENTIALS &&
 
 const SANDBOX_MODE = !HAS_REAL_CREDENTIALS
 
+// VALIDATE CALLBACK URL on startup
+function validateCallbackUrl() {
+  const errors: string[] = []
+  
+  // Check HTTPS
+  if (!MPESA_CALLBACK_URL.startsWith('https://')) {
+    errors.push('❌ CALLBACK URL MUST BE HTTPS (not HTTP)')
+  }
+  
+  // Check localhost
+  if (MPESA_CALLBACK_URL.includes('localhost') || MPESA_CALLBACK_URL.includes('127.0.0.1')) {
+    errors.push('❌ CALLBACK URL cannot be localhost (M-Pesa cannot reach it)')
+  }
+  
+  if (errors.length > 0) {
+    console.error('🔴 CALLBACK URL VALIDATION ERRORS:')
+    errors.forEach(e => console.error(e))
+    console.error(`   Current: ${MPESA_CALLBACK_URL}`)
+    if (!SANDBOX_MODE) {
+      console.error('   ⚠️  Production mode - callback URL must be accessible!')
+    }
+  } else {
+    console.log(`✅ Callback URL validated: ${MPESA_CALLBACK_URL}`)
+  }
+}
+
+validateCallbackUrl()
+
 console.log(`[mpesa-pay.ts] Mode: ${SANDBOX_MODE ? 'SANDBOX 🧪' : 'PRODUCTION 🚀'} | Credentials: ${HAS_REAL_CREDENTIALS ? 'Real' : 'Missing/Sandbox'}`)
 
 // Use production URLs if real credentials, sandbox otherwise
