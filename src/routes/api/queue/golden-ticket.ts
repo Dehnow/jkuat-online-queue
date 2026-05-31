@@ -1,15 +1,21 @@
 import { json } from '@tanstack/start'
 import { db } from '../../../db/index'
 import { queueEntries } from '../../../db/schema'
-import { eq } from 'drizzle-orm'
+import { eq, and } from 'drizzle-orm'
 import { v4 as uuidv4 } from 'uuid'
 
-// Generate unique golden ticket reference
-function generateGoldenTicketRef(queueId: number, serviceType: string): string {
-  const timestamp = Date.now()
-  const random = Math.random().toString(36).substring(2, 8).toUpperCase()
+// Generate enhanced golden ticket reference with more details
+function generateGoldenTicketRef(queueId: number, studentId: string, serviceType: string): string {
+  const date = new Date()
+  const dateStr = date.toISOString().slice(0, 10).replace(/-/g, '') // YYYYMMDD
+  const timeStr = date.toISOString().slice(11, 16).replace(/:/g, '') // HHMM
   const serviceCode = getServiceCode(serviceType)
-  return `GT-${serviceCode}-${timestamp}-${random}`
+  const shortStudentId = studentId.slice(-4).toUpperCase() // Last 4 chars of student ID
+  const random = Math.random().toString(36).substring(2, 5).toUpperCase() // 3 random chars
+  
+  // Format: GT-REG-20260531-1530-1234-GT01-ABC
+  // Breakdown: GT-SERVICE-DATE-TIME-QUEUEID-STUDENTIDLAST4-RANDOM
+  return `GT-${serviceCode}-${dateStr}-${timeStr}-${String(queueId).padStart(4, '0')}-${shortStudentId}-${random}`
 }
 
 function getServiceCode(service: string): string {
@@ -39,6 +45,19 @@ export async function POST(request: Request) {
       return json({ error: 'Queue entry not found' }, { status: 404 })
     }
 
+    // Check if this ticket is eligible for golden upgrade
+    if (!entry.canUpgradeToGolden) {
+      return json({ 
+        error: 'This ticket cannot be upgraded to golden', 
+        message: 'Golden ticket opportunity is only available for your most recent ticket. Create a new ticket to get another golden ticket opportunity.',
+        details: {
+          currentStatus: entry.status,
+          isAlreadyGolden: entry.isGolden,
+          eligibleForUpgrade: false
+        }
+      }, { status: 403 })
+    }
+
     // Check if already golden
     if (entry.isGolden) {
       return json({ 
@@ -47,8 +66,8 @@ export async function POST(request: Request) {
     }
 
     if (action === 'mark-golden') {
-      // Generate golden ticket reference
-      const goldenRef = generateGoldenTicketRef(entry.id, entry.serviceType)
+      // Generate enhanced golden ticket reference
+      const goldenRef = generateGoldenTicketRef(entry.id, entry.studentId, entry.serviceType)
 
       // Update entry to mark as golden (not yet paid)
       await db.update(queueEntries)
@@ -66,9 +85,12 @@ export async function POST(request: Request) {
           id: entry.id,
           goldenTicketRef: goldenRef,
           queueNumber: entry.queueNumber,
+          studentId: entry.studentId,
+          serviceType: entry.serviceType,
           originalTicket: `${getServiceCode(entry.serviceType)}${entry.id}`,
           amount: 50, // KES 50 golden ticket fee
           description: `Golden Ticket Premium - Queue #${entry.queueNumber}`,
+          expiresAt: new Date(Date.now() + 10 * 60000), // 10 minutes to complete payment
         },
       })
     }
