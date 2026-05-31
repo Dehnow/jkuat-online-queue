@@ -40,18 +40,50 @@ function extractCallbackMetadata(metadata: any) {
   return result
 }
 
+// Handle GET requests (health checks, browser visits)
+export async function GET(request: Request) {
+  console.log('ℹ️  GET /api/queue/mpesa-callback - Health check')
+  return json({
+    status: 'ok',
+    message: 'M-Pesa callback endpoint is live',
+    method: 'POST',
+    note: 'This endpoint accepts POST requests from M-Pesa with callback data',
+  }, { status: 200 })
+}
+
 export async function POST(request: Request) {
   try {
-    const body = await request.json()
-    const result = body.Body?.stkCallback || {}
+    // Safely parse JSON body
+    let body: any = {}
+    try {
+      body = await request.json()
+    } catch (parseError) {
+      console.warn('⚠️  Failed to parse JSON body:', parseError)
+      // Return 200 OK anyway - don't want M-Pesa retrying forever
+      return json({
+        success: true,
+        message: 'Callback received',
+      }, { status: 200 })
+    }
 
-    const {
-      MerchantRequestID,
-      CheckoutRequestID,
-      ResultCode,
-      ResultDesc,
-      CallbackMetadata,
-    } = result
+    // Safely extract callback data
+    const result = body?.Body?.stkCallback
+
+    // If no callback data found, still return 200 OK
+    if (!result) {
+      console.warn('⚠️  No stkCallback data in request body')
+      return json({
+        success: true,
+        message: 'Callback received',
+      }, { status: 200 })
+    }
+
+    // Safely extract callback fields (all optional)
+    const MerchantRequestID = result?.MerchantRequestID || ''
+    const CheckoutRequestID = result?.CheckoutRequestID || ''
+    const ResultCode = result?.ResultCode
+    const ResultDesc = result?.ResultDesc || 'Unknown'
+    const CallbackMetadata = result?.CallbackMetadata
 
     console.log('🔔 M-Pesa Callback Received')
     console.log(`   CheckoutRequestID: ${CheckoutRequestID}`)

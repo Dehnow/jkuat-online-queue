@@ -15,6 +15,13 @@
       "when": 1780087936328,
       "tag": "0001_furry_star_brand",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1780202800626,
+      "tag": "0002_curved_pestilence",
+      "breakpoints": true
     }
   ]
 }

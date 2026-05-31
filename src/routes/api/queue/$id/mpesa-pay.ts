@@ -106,27 +106,35 @@ async function getMpesaAccessToken(retryCount = 0, maxRetries = 3): Promise<stri
     
     console.log(`🔐 Requesting M-Pesa access token from ${baseUrl}${retryCount > 0 ? ` (Retry ${retryCount}/${maxRetries})` : ''}`)
     
-    const response = await fetch(`${baseUrl}/oauth/v1/generate?grant_type=client_credentials`, {
-      method: 'GET',
-      headers: {
-        Authorization: `Basic ${auth}`,
-      },
-      timeout: 10000,
-    })
+    // Use AbortController for timeout (fetch doesn't support timeout option)
+    const controller = new AbortController()
+    const timeoutId = setTimeout(() => controller.abort(), 10000)
+    
+    try {
+      const response = await fetch(`${baseUrl}/oauth/v1/generate?grant_type=client_credentials`, {
+        method: 'GET',
+        headers: {
+          Authorization: `Basic ${auth}`,
+        },
+        signal: controller.signal,
+      })
 
-    const data: any = await response.json()
-    
-    if (!response.ok) {
-      const errorMsg = data.error_description || data.error || `HTTP ${response.status}`
-      throw new Error(`M-Pesa auth failed: ${errorMsg}`)
+      const data: any = await response.json()
+      
+      if (!response.ok) {
+        const errorMsg = data.error_description || data.error || `HTTP ${response.status}`
+        throw new Error(`M-Pesa auth failed: ${errorMsg}`)
+      }
+      
+      if (!data.access_token) {
+        throw new Error(data.error_description || 'No access token in response')
+      }
+      
+      console.log(`✅ M-Pesa access token obtained (valid for ~3600 seconds)`)
+      return data.access_token
+    } finally {
+      clearTimeout(timeoutId)
     }
-    
-    if (!data.access_token) {
-      throw new Error(data.error_description || 'No access token in response')
-    }
-    
-    console.log(`✅ M-Pesa access token obtained (valid for ~3600 seconds)`)
-    return data.access_token
   } catch (error) {
     const errorMsg = error instanceof Error ? error.message : String(error)
     
@@ -189,15 +197,20 @@ async function initiateMpesaPayment(phoneNumber: string, amount: number, queueId
     console.log(`   Reference: ${goldenRef}`)
     console.log(`   Mode: ${SANDBOX_MODE ? 'SANDBOX' : 'PRODUCTION'}`)
 
-    const response = await fetch(`${baseUrl}/mpesa/stkpush/v1/processrequest`, {
-      method: 'POST',
-      headers: {
-        Authorization: `Bearer ${token}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify(stkPayload),
-      timeout: 10000,
-    })
+    // Use AbortController for timeout
+    const controller = new AbortController()
+    const timeoutId = setTimeout(() => controller.abort(), 10000)
+    
+    try {
+      const response = await fetch(`${baseUrl}/mpesa/stkpush/v1/processrequest`, {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${token}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(stkPayload),
+        signal: controller.signal,
+      })
 
     const data: any = await response.json()
     
@@ -253,11 +266,18 @@ export async function POST(request: Request, { params }: { params: { id: string 
     const body = await request.json()
     const { phoneNumber } = body
 
-    // Validate phone number
-    if (!phoneNumber || !/^[\+]?254\d{9}$/.test(phoneNumber.replace(/\s/g, ''))) {
+    // Validate phone number - accept multiple formats
+    const cleanPhone = phoneNumber?.replace(/\s/g, '') || ''
+    const validFormats = [
+      /^\+254\d{9}$/,      // +254712345678
+      /^254\d{9}$/,        // 254712345678
+      /^0\d{9}$/,          // 0712345678
+    ]
+    
+    if (!validFormats.some(fmt => fmt.test(cleanPhone))) {
       return json({ 
         error: 'Invalid phone number',
-        message: 'Invalid phone number. Use format: +254712345678' 
+        message: 'Invalid phone number. Use format: +254712345678, 254712345678, or 0712345678' 
       }, { status: 400 })
     }
 
@@ -276,6 +296,19 @@ export async function POST(request: Request, { params }: { params: { id: string 
         error: 'Already upgraded',
         message: `This ticket is already a Golden Ticket (${entry.goldenTicketRef}). You cannot upgrade it again.`
       }, { status: 429 })
+    }
+
+    // Check if eligible for golden upgrade (only the most recent ticket can be upgraded)
+    if (!entry.canUpgradeToGolden) {
+      return json({
+        error: 'Not eligible for upgrade',
+        message: 'Golden ticket opportunity is only available for your most recent ticket. Create a new ticket to get another golden ticket opportunity.',
+        details: {
+          currentStatus: entry.status,
+          isAlreadyGolden: entry.isGolden,
+          eligibleForUpgrade: false
+        }
+      }, { status: 403 })
     }
 
     // Check if already served or cancelled
@@ -333,12 +366,19 @@ export async function POST(request: Request, { params }: { params: { id: string 
     } else {
       // Production: Call actual M-Pesa Daraja API for STK Push
       try {
-        // Validate credentials
-        if (!MPESA_CONSUMER_KEY || !MPESA_CONSUMER_SECRET) {
-          console.error('ERROR M-Pesa credentials not configured')
+        // Validate all required credentials
+        const missingCredentials = []
+        if (!MPESA_CONSUMER_KEY) missingCredentials.push('CONSUMER_KEY')
+        if (!MPESA_CONSUMER_SECRET) missingCredentials.push('CONSUMER_SECRET')
+        if (!MPESA_BUSINESS_SHORTCODE) missingCredentials.push('SHORTCODE')
+        if (!MPESA_PASSKEY) missingCredentials.push('PASSKEY')
+        
+        if (missingCredentials.length > 0) {
+          console.error(`❌ M-Pesa credentials missing: ${missingCredentials.join(', ')}`)
           return json({
             error: 'M-Pesa credentials not configured',
-            message: 'Please set CONSUMER_KEY and CONSUMER_SECRET environment variables',
+            message: `Please set environment variables: ${missingCredentials.join(', ')}`,
+            missingCredentials,
           }, { status: 500 })
         }
 

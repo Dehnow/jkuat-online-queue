@@ -1,0 +1,1 @@
+ALTER TABLE "queue_entries" ADD COLUMN "can_upgrade_to_golden" boolean DEFAULT true NOT NULL;
