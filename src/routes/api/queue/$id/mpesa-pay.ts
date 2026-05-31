@@ -396,10 +396,6 @@ export async function POST(request: Request, { params }: { params: { id: string 
             details: paymentResult.details,
             suggestions: getSuggestions(paymentResult.responseCode),
           }, { status: 400 })
-          return json({
-            success: false,
-            error: paymentResult.error,
-          }, { status: 400 })
         }
       } catch (error) {
         console.error('Payment initiation failed:', error)
