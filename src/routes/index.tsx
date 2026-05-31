@@ -492,12 +492,19 @@ function StudentDashboard() {
         }
 
         try {
-          // Check callback status with CheckoutRequestID validation
-          const statusRes = await fetch(`/api/mpesa/callback-status?checkoutRequestId=${encodeURIComponent(requestId)}`)
+          // Check M-Pesa payment status for this queue entry
+          // Primary: Use queue-based endpoint (more direct)
+          let statusRes = await fetch(`/api/queue/${selectedTicketForGolden}/mpesa-status`)
+          
+          // Fallback: Try checkout-based endpoint for backward compatibility
+          if (!statusRes.ok && statusRes.status === 404) {
+            statusRes = await fetch(`/api/mpesa/callback-status?checkoutRequestId=${encodeURIComponent(requestId)}`)
+          }
+          
           if (statusRes.ok) {
             const status = await statusRes.json()
             
-            if (status.mpesaStatus === 'success' && status.isGolden) {
+            if (status.mpesaStatus === 'success') {
               console.log('✅ Payment successful! Callback received and verified.')
               console.log(`   Receipt: ${status.receiptNumber || 'N/A'}`)
               clearInterval(pollInterval)
