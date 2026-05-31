@@ -73,8 +73,8 @@ const MPESA_CONFIG = {
   passkey: HAS_REAL_CREDENTIALS ? PASSKEY_ENV : SANDBOX_PASSKEY,
   tillNumber: HAS_REAL_CREDENTIALS ? SHORTCODE_ENV : '174379',
   callbackUrl: process.env.CALLBACK_URL || process.env.MPESA_CALLBACK_URL || (NODE_ENV === 'production' 
-    ? 'https://jkuat-online-queue.onrender.com/mpesa-express-simulate/'
-    : 'http://localhost:3000/mpesa-express-simulate/')
+    ? 'https://jkuat-online-queue.onrender.com/api/queue/mpesa-callback'
+    : 'http://localhost:3000/api/queue/mpesa-callback')
 }
 
 // Startup logging - DETAILED CREDENTIAL STATUS
@@ -1232,7 +1232,7 @@ app.post('/api/queue/mpesa', async (req, res) => {
         PartyA: normalizedPhone,
         PartyB: shortCode,
         PhoneNumber: normalizedPhone,
-        CallBackURL: MPESA_CONFIG.callbackUrl,
+        CallbackURL: MPESA_CONFIG.callbackUrl,
         AccountReference: goldenRef,
         TransactionDesc: `Golden Ticket - ${goldenRef}`,
       }),
