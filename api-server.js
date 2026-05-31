@@ -7,6 +7,7 @@ import { eq, and, or, asc, desc, count as dbCount, sql } from 'drizzle-orm'
 import { pgTable, serial, text, timestamp, integer, pgEnum, boolean } from 'drizzle-orm/pg-core'
 import path from 'path'
 import { fileURLToPath } from 'url'
+import { initiateStkPush, getGoldenPrice, getMpesaConfig } from './mpesa.js'
 
 // Load environment variables - prioritize .env.local for development
 const NODE_ENV_INITIAL = process.env.NODE_ENV || 'development'
