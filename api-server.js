@@ -22,30 +22,30 @@ const NODE_ENV = process.env.NODE_ENV || 'development'
 const PORT = process.env.PORT || 3000
 
 // Startup validation
-console.log('Ã°Å¸Å¡â‚¬ JKUAT Queue System - Startup Initialization')
-console.log(`Ã°Å¸â€œâ€¹ Environment: ${NODE_ENV}`)
-console.log(`Ã°Å¸â€Å’ Port: ${PORT}`)
-console.log(`Ã°Å¸â€œÂ¦ Node Version: ${process.version}`)
+console.log('ðŸš€ JKUAT Queue System - Startup Initialization')
+console.log(`ðŸ“‹ Environment: ${NODE_ENV}`)
+console.log(`ðŸ”Œ Port: ${PORT}`)
+console.log(`ðŸ“¦ Node Version: ${process.version}`)
 
 if (NODE_ENV === 'production' && !process.env.DATABASE_URL) {
-  console.error('Ã¢ÂÅ’ FATAL: DATABASE_URL environment variable is not set!')
-  console.error('Ã¢ÂÅ’ Cannot start in production without database connection.')
+  console.error('âŒ FATAL: DATABASE_URL environment variable is not set!')
+  console.error('âŒ Cannot start in production without database connection.')
   console.error('Please ensure DATABASE_URL is configured in your environment.')
   process.exit(1)
 }
 
 if (NODE_ENV === 'production') {
-  console.log('Ã¢Å“â€œ DATABASE_URL is configured')
+  console.log('âœ“ DATABASE_URL is configured')
 } else {
-  console.warn('Ã¢Å¡Â Ã¯Â¸Â  Development mode: DATABASE_URL may not be required for local testing')
+  console.warn('âš ï¸  Development mode: DATABASE_URL may not be required for local testing')
 }
 
 // M-Pesa Configuration - AUTO-DETECT PRODUCTION vs SANDBOX
 // =========================================================
 // Environment variables (Render):
 // - CONSUMER_KEY, CONSUMER_SECRET, PASSKEY, SHORTCODE (for PRODUCTION)
-// If all are provided → AUTO uses PRODUCTION with real M-Pesa
-// If missing → AUTO falls back to SANDBOX (no real STK prompts)
+// If all are provided ? AUTO uses PRODUCTION with real M-Pesa
+// If missing ? AUTO falls back to SANDBOX (no real STK prompts)
 // NO need to set MPESA_SANDBOX variable anymore!
 
 const SANDBOX_CONSUMER_KEY = '4PvGSK0r7RiNmZkjnEwYlQ2xAzB8sD3qF5gH6tJ9oP1u2v'
@@ -78,35 +78,35 @@ const MPESA_CONFIG = {
 }
 
 // Startup logging - DETAILED CREDENTIAL STATUS
-console.log(`\n🔐 M-PESA CREDENTIAL STATUS`)
-console.log(`━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━`)
-console.log(`CONSUMER_KEY env var provided: ${CONSUMER_KEY_ENV ? '✓ YES' : '✗ NO'}`)
-console.log(`CONSUMER_SECRET env var provided: ${CONSUMER_SECRET_ENV ? '✓ YES' : '✗ NO'}`)
-console.log(`PASSKEY env var provided: ${PASSKEY_ENV ? '✓ YES' : '✗ NO'}`)
-console.log(`SHORTCODE env var provided: ${SHORTCODE_ENV ? '✓ YES' : '✗ NO'}`)
+console.log(`\n?? M-PESA CREDENTIAL STATUS`)
+console.log(`?????????????????????????????????????????????`)
+console.log(`CONSUMER_KEY env var provided: ${CONSUMER_KEY_ENV ? '? YES' : '? NO'}`)
+console.log(`CONSUMER_SECRET env var provided: ${CONSUMER_SECRET_ENV ? '? YES' : '? NO'}`)
+console.log(`PASSKEY env var provided: ${PASSKEY_ENV ? '? YES' : '? NO'}`)
+console.log(`SHORTCODE env var provided: ${SHORTCODE_ENV ? '? YES' : '? NO'}`)
 console.log(`\nAuto-detection result:`)
-console.log(`  All credentials present: ${HAS_PRODUCTION_CREDENTIALS ? '✓ YES' : '✗ NO'}`)
-console.log(`  Real credentials (not sandbox): ${HAS_REAL_CREDENTIALS ? '✓ YES' : '✗ NO'}`)
-console.log(`━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━`)
+console.log(`  All credentials present: ${HAS_PRODUCTION_CREDENTIALS ? '? YES' : '? NO'}`)
+console.log(`  Real credentials (not sandbox): ${HAS_REAL_CREDENTIALS ? '? YES' : '? NO'}`)
+console.log(`?????????????????????????????????????????????`)
 
 if (MPESA_CONFIG.isSandbox) {
-  console.log(`\n🧪 SANDBOX MODE (Auto-detected)`)
+  console.log(`\n?? SANDBOX MODE (Auto-detected)`)
   console.log(`   Reason: Real credentials not provided`)
   console.log(`   Action: Set CONSUMER_KEY, CONSUMER_SECRET, PASSKEY, SHORTCODE in Render`)
   console.log(`   Result: STK prompts will NOT reach actual phones`)
 } else {
-  console.log(`\n🚀 PRODUCTION MODE (Auto-detected)`)
+  console.log(`\n?? PRODUCTION MODE (Auto-detected)`)
   console.log(`   Reason: Real credentials detected`)
   console.log(`   Result: Real STK prompts WILL be sent to M-Pesa`)
 }
 
-console.log(`\n📱 M-PESA CONFIGURATION`)
-console.log(`━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━`)
-console.log(`Mode: ${MPESA_CONFIG.isSandbox ? 'SANDBOX 🧪' : 'PRODUCTION 🚀'}`)
+console.log(`\n?? M-PESA CONFIGURATION`)
+console.log(`?????????????????????????????????????????????`)
+console.log(`Mode: ${MPESA_CONFIG.isSandbox ? 'SANDBOX ??' : 'PRODUCTION ??'}`)
 console.log(`Environment: ${NODE_ENV === 'production' ? 'PRODUCTION (Render)' : 'DEVELOPMENT'}`)
 console.log(`Callback URL: ${MPESA_CONFIG.callbackUrl}`)
 console.log(`Till Number: ${MPESA_CONFIG.tillNumber}`)
-console.log(`━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n`)
+console.log(`?????????????????????????????????????????????\n`)
 
 // Schema
 const statusEnum = pgEnum('queue_status', ['waiting', 'serving', 'served', 'cancelled'])
@@ -194,7 +194,7 @@ async function retryWithBackoff(fn, maxRetries = 2, context = '') {
       lastError = error
       if (attempt <= maxRetries) {
         const delay = Math.pow(2, attempt - 1) * 1000
-        console.warn(`  ⚠️  Failed: ${error.message}. Retrying in ${delay}ms...`)
+        console.warn(`  ??  Failed: ${error.message}. Retrying in ${delay}ms...`)
         await new Promise(r => setTimeout(r, delay))
       }
     }
@@ -245,7 +245,7 @@ const corsOptions = {
     } else {
       // Log rejected origins in production for debugging
       if (NODE_ENV === 'production') {
-        console.warn(`Ã¢Å¡Â Ã¯Â¸Â  CORS request from unauthorized origin: ${origin}`)
+        console.warn(`âš ï¸  CORS request from unauthorized origin: ${origin}`)
       }
       callback(new Error('CORS not allowed'))
     }
@@ -280,7 +280,7 @@ app.use((req, res, next) => {
 // Serve static files in production
 if (NODE_ENV === 'production') {
   const staticPath = path.join(__dirname, 'dist')
-  console.log(`Ã°Å¸â€œÂ Serving static files from: ${staticPath}`)
+  console.log(`ðŸ“ Serving static files from: ${staticPath}`)
   app.use(express.static(staticPath, { 
     maxAge: '1h',
     etag: false
@@ -436,22 +436,22 @@ app.get('/api/queue', async (req, res) => {
 app.post('/api/queue', async (req, res) => {
   try {
     if (!db) {
-      console.error('Ã¢ÂÅ’ Database not initialized for POST /api/queue')
+      console.error('âŒ Database not initialized for POST /api/queue')
       return res.status(503).json({ error: 'Database not ready' })
     }
 
     const { name, studentId, serviceType } = req.body
-    console.log('Ã°Å¸â€œÂ Creating queue entry:', { name, studentId, serviceType })
+    console.log('ðŸ“ Creating queue entry:', { name, studentId, serviceType })
 
     if (!name || !studentId || !serviceType) {
-      console.warn('Ã¢Å¡Â Ã¯Â¸Â  Missing fields:', { name: !!name, studentId: !!studentId, serviceType: !!serviceType })
+      console.warn('âš ï¸  Missing fields:', { name: !!name, studentId: !!studentId, serviceType: !!serviceType })
       return res.status(400).json({ error: 'Missing required fields' })
     }
 
     // Validate service type
     const validServices = ['registrar', 'finance', 'ict_helpdesk']
     if (!validServices.includes(serviceType)) {
-      console.warn('Ã¢Å¡Â Ã¯Â¸Â  Invalid service type:', serviceType)
+      console.warn('âš ï¸  Invalid service type:', serviceType)
       return res.status(400).json({ error: 'Invalid service type' })
     }
 
@@ -480,7 +480,7 @@ app.post('/api/queue', async (req, res) => {
       )
       .then((res) => res[0]?.count ?? 0)
 
-    console.log(`Ã°Å¸â€œÅ  Student ${studentId} active tickets: ${activeCount}`)
+    console.log(`ðŸ“Š Student ${studentId} active tickets: ${activeCount}`)
 
     if (activeCount >= 3) {
       return res.status(429).json({ 
@@ -925,12 +925,12 @@ app.patch('/api/staff/office-status', async (req, res) => {
 app.post('/api/admin/serve', checkAuth, async (req, res) => {
   try {
     if (!db) {
-      console.error('Ã¢ÂÅ’ Database not initialized for POST /api/admin/serve')
+      console.error('âŒ Database not initialized for POST /api/admin/serve')
       return res.status(503).json({ error: 'Database not ready' })
     }
 
     const { serviceType, action, entryId } = req.body
-    console.log('Ã°Å¸â€Â§ Admin action:', { serviceType, action, entryId })
+    console.log('ðŸ”§ Admin action:', { serviceType, action, entryId })
 
     if (action === 'serve_next') {
       // Mark currently serving as served
@@ -999,7 +999,7 @@ app.post('/api/admin/serve', checkAuth, async (req, res) => {
       }
 
       if (waiting.length === 0) {
-        console.log('Ã¢ÂÂ¹Ã¯Â¸Â  No more entries in queue for service:', serviceType)
+        console.log('â¹ï¸  No more entries in queue for service:', serviceType)
         return res.json({ message: 'No more in queue' })
       }
 
@@ -1010,7 +1010,7 @@ app.post('/api/admin/serve', checkAuth, async (req, res) => {
         .returning()
 
       const ticketLabel = updated[0].isGolden && updated[0].mpesaStatus === 'success' 
-        ? `${updated[0].queueNumber}âœ¨ (GOLDEN TICKET)` 
+        ? `${updated[0].queueNumber}✨ (GOLDEN TICKET)` 
         : updated[0].queueNumber.toString()
 
       console.log('Serving next ticket:', updated[0], '- Label:', ticketLabel)
@@ -1022,7 +1022,7 @@ app.post('/api/admin/serve', checkAuth, async (req, res) => {
         .where(eq(queueEntries.id, entryId))
         .returning()
 
-      console.log('Ã¢Å“â€¦ Completed entry:', updated[0])
+      console.log('âœ… Completed entry:', updated[0])
       res.json(updated[0] || { error: 'Entry not found' })
     } else if (action === 'cancel' && entryId) {
       const updated = await db
@@ -1031,15 +1031,15 @@ app.post('/api/admin/serve', checkAuth, async (req, res) => {
         .where(eq(queueEntries.id, entryId))
         .returning()
 
-      console.log('Ã¢ÂÅ’ Cancelled entry:', updated[0])
+      console.log('âŒ Cancelled entry:', updated[0])
       res.json(updated[0] || { error: 'Entry not found' })
     } else {
-      console.warn('Ã¢Å¡Â Ã¯Â¸Â  Invalid admin action:', action)
+      console.warn('âš ï¸  Invalid admin action:', action)
       res.status(400).json({ error: 'Invalid action' })
     }
   } catch (error) {
-    console.error('Ã¢ÂÅ’ Error serving queue:', error.message)
-    console.error('Ã°Å¸â€œâ€¹ Stack trace:', error.stack)
+    console.error('âŒ Error serving queue:', error.message)
+    console.error('ðŸ“‹ Stack trace:', error.stack)
     res.status(500).json({ error: 'Internal server error', details: error.message })
   }
 })
@@ -1135,7 +1135,7 @@ app.post('/api/queue/golden-ticket', async (req, res) => {
       })
       .where(eq(queueEntries.id, Number(queueId)))
 
-    console.log(`✅ Ticket ${queueId} marked as golden: ${goldenRef}`)
+    console.log(`? Ticket ${queueId} marked as golden: ${goldenRef}`)
 
     return res.json({
       success: true,
@@ -1250,7 +1250,7 @@ app.post('/api/queue/mpesa', async (req, res) => {
         })
         .where(eq(queueEntries.id, Number(queueId)))
 
-      console.log(`✅ STK Push initiated for queue ${queueId}: ${stkData.CheckoutRequestID}`)
+      console.log(`? STK Push initiated for queue ${queueId}: ${stkData.CheckoutRequestID}`)
 
       return res.json({
         success: true,
@@ -1281,7 +1281,7 @@ app.get('/api/queue/:id/mpesa-status', async (req, res) => {
       return res.status(400).json({ error: 'Invalid queue entry ID' })
     }
 
-    console.log(`📱 Checking M-Pesa status for queue entry ${id}`)
+    console.log(`?? Checking M-Pesa status for queue entry ${id}`)
 
     const entry = await db
       .select({
@@ -1304,16 +1304,16 @@ app.get('/api/queue/:id/mpesa-status', async (req, res) => {
 
     // Log status
     if (entry.mpesaStatus === 'success') {
-      console.log(`✅ M-Pesa Payment SUCCESS for queue ${id}: ${entry.goldenTicketRef}`)
+      console.log(`? M-Pesa Payment SUCCESS for queue ${id}: ${entry.goldenTicketRef}`)
     } else if (entry.mpesaStatus === 'failed') {
-      console.log(`❌ M-Pesa Payment FAILED for queue ${id}`)
+      console.log(`? M-Pesa Payment FAILED for queue ${id}`)
     } else {
-      console.log(`⏳ M-Pesa Payment PENDING for queue ${id} (waiting for callback)`)
+      console.log(`? M-Pesa Payment PENDING for queue ${id} (waiting for callback)`)
     }
 
     res.status(200).json(entry)
   } catch (error) {
-    console.error('❌ Error checking M-Pesa status:', error)
+    console.error('? Error checking M-Pesa status:', error)
     res.status(500).json({ error: 'Internal server error' })
   }
 })
@@ -1331,7 +1331,7 @@ app.get('/api/mpesa/callback-status', async (req, res) => {
       return res.status(400).json({ error: 'Missing checkoutRequestId parameter' })
     }
 
-    console.log(`📱 Callback status check: ${checkoutRequestId}`)
+    console.log(`?? Callback status check: ${checkoutRequestId}`)
 
     // Look up queue entry by checkout request ID (stored as mpesaTransactionId)
     const entry = await db
@@ -1351,7 +1351,7 @@ app.get('/api/mpesa/callback-status', async (req, res) => {
 
     if (!entry) {
       // Not found yet - callback may still be in flight
-      console.log(`⏳ No entry found yet for: ${checkoutRequestId}`)
+      console.log(`? No entry found yet for: ${checkoutRequestId}`)
       return res.status(404).json({ 
         error: 'Transaction not found', 
         checkoutRequestId 
@@ -1360,11 +1360,11 @@ app.get('/api/mpesa/callback-status', async (req, res) => {
 
     // Found - return current status
     if (entry.mpesaStatus === 'success') {
-      console.log(`✅ Payment SUCCESS: ${entry.goldenTicketRef}`)
+      console.log(`? Payment SUCCESS: ${entry.goldenTicketRef}`)
     } else if (entry.mpesaStatus === 'failed') {
-      console.log(`❌ Payment FAILED: ${checkoutRequestId}`)
+      console.log(`? Payment FAILED: ${checkoutRequestId}`)
     } else {
-      console.log(`⏳ Payment PENDING: ${checkoutRequestId}`)
+      console.log(`? Payment PENDING: ${checkoutRequestId}`)
     }
 
     res.status(200).json({
@@ -1378,7 +1378,7 @@ app.get('/api/mpesa/callback-status', async (req, res) => {
       status: entry.status,
     })
   } catch (error) {
-    console.error('❌ Error checking callback status:', error)
+    console.error('? Error checking callback status:', error)
     res.status(500).json({ error: 'Internal server error' })
   }
 })
@@ -1398,13 +1398,13 @@ app.get('/api/queue/mpesa-callback', (req, res) => {
 app.post('/api/queue/mpesa-callback', async (req, res) => {
   try {
     if (!db) {
-      console.error('ðŸš¨ Database not ready for callback')
+      console.error('🚨 Database not ready for callback')
       return res.status(503).json({ error: 'Service unavailable' })
     }
 
     const callbackBody = req.body
 
-    console.log('ðŸ“ž M-Pesa Callback received:', JSON.stringify(callbackBody, null, 2))
+    console.log('📞 M-Pesa Callback received:', JSON.stringify(callbackBody, null, 2))
 
     // Extract callback data
     const stkCallback = callbackBody?.Body?.stkCallback || {}
@@ -1412,7 +1412,7 @@ app.post('/api/queue/mpesa-callback', async (req, res) => {
     const ResultDesc = stkCallback.ResultDesc || 'Unknown result'
 
     if (!CheckoutRequestID) {
-      console.warn('âš ï¸ No CheckoutRequestID in callback')
+      console.warn('⚠️ No CheckoutRequestID in callback')
       return res.status(200).json({ success: false }) // Must return 200 to acknowledge
     }
 
@@ -1424,29 +1424,31 @@ app.post('/api/queue/mpesa-callback', async (req, res) => {
       })
     }
 
-    // Find queue entry by checkout ID (stored when payment was initiated)
-    // For now, extract from CheckoutRequestID format: "SANDBOX_{id}_{timestamp}"
-    let queueEntryId = null
-    if (CheckoutRequestID.startsWith('SANDBOX_')) {
-      const parts = CheckoutRequestID.split('_')
-      queueEntryId = parseInt(parts[1], 10)
-    }
-
-    if (!queueEntryId) {
-      console.warn(`âš ï¸ Could not extract queue ID from checkout: ${CheckoutRequestID}`)
-      return res.status(200).json({ success: false })
-    }
-
-    // Get queue entry
-    const entry = await db
+    // Find queue entry by CheckoutRequestID
+    // Method 1: Direct lookup (production M-Pesa format: ws_CO_*)
+    let entry = await db
       .select()
       .from(queueEntries)
-      .where(eq(queueEntries.id, queueEntryId))
+      .where(eq(queueEntries.mpesaTransactionId, CheckoutRequestID))
       .limit(1)
       .then(rows => rows[0] || null)
+    
+    // Method 2: Parse SANDBOX format (test format: SANDBOX_{id}_{timestamp})
+    if (!entry && CheckoutRequestID.startsWith('SANDBOX_')) {
+      const parts = CheckoutRequestID.split('_')
+      const id = parseInt(parts[1], 10)
+      if (!isNaN(id)) {
+        entry = await db
+          .select()
+          .from(queueEntries)
+          .where(eq(queueEntries.id, id))
+          .limit(1)
+          .then(rows => rows[0] || null)
+      }
+    }
 
     if (!entry) {
-      console.warn(`âš ï¸ Queue entry not found: ${queueEntryId}`)
+      console.warn(`No queue entry for: ${CheckoutRequestID}`)
       return res.status(200).json({ success: false })
     }
 
@@ -1479,9 +1481,9 @@ app.post('/api/queue/mpesa-callback', async (req, res) => {
           mpesaStatus: 'success',
           mpesaPaidAt: new Date(),
         })
-        .where(eq(queueEntries.id, queueEntryId))
+        .where(eq(queueEntries.id, entry.id))
 
-      console.log(`âœ… Golden ticket activated: ${goldenTicketRef} (Receipt: ${receiptNumber}, Amount: KES ${amount})`)
+      console.log(`✅ Golden ticket activated: ${goldenTicketRef} (Receipt: ${receiptNumber}, Amount: KES ${amount})`)
     } else {
       // Payment failed
       await db
@@ -1489,9 +1491,9 @@ app.post('/api/queue/mpesa-callback', async (req, res) => {
         .set({
           mpesaStatus: 'failed',
         })
-        .where(eq(queueEntries.id, queueEntryId))
+        .where(eq(queueEntries.id, entry.id))
 
-      console.log(`âŒ M-Pesa payment failed for queue ${queueEntryId}: ${ResultDesc}`)
+      console.log(`Payment failed: ${ResultDesc}`)
     }
 
     // Always return 200 to acknowledge receipt
@@ -1529,7 +1531,7 @@ app.get('/api/debug', (req, res) => {
 app.get('*', (req, res) => {
   if (NODE_ENV === 'production') {
     const indexPath = path.join(__dirname, 'dist', 'index.html')
-    console.log(`Ã°Å¸â€œâ€ž Serving SPA fallback to ${req.path} from dist`)
+    console.log(`ðŸ“„ Serving SPA fallback to ${req.path} from dist`)
     res.sendFile(indexPath, (err) => {
       if (err) {
         console.error('Error serving index.html:', err)
@@ -1544,12 +1546,12 @@ app.get('*', (req, res) => {
 
 // Initialize database and start server
 async function startServer() {
-  console.log('Ã°Å¸Å¡â‚¬ Starting server...')
+  console.log('ðŸš€ Starting server...')
   
   // Try to initialize database with timeout (max 30 seconds)
   let dbConnected = false
   try {
-    console.log('Ã°Å¸â€œÂ¡ Attempting initial database connection...')
+    console.log('ðŸ“¡ Attempting initial database connection...')
     const dbPromise = initializeDatabase()
     const timeoutPromise = new Promise((_, reject) => 
       setTimeout(() => reject(new Error('Database connection timeout (30s)')), 30000)
@@ -1557,10 +1559,10 @@ async function startServer() {
     
     await Promise.race([dbPromise, timeoutPromise])
     dbConnected = true
-    console.log(`Ã¢Å“â€œ Database: Connected and ready on startup`)
+    console.log(`âœ“ Database: Connected and ready on startup`)
   } catch (error) {
-    console.error('Ã¢ÂÅ’ Initial database connection failed:', error.message)
-    console.warn('Ã¢Å¡Â Ã¯Â¸Â  Server will start but will attempt to reconnect...')
+    console.error('âŒ Initial database connection failed:', error.message)
+    console.warn('âš ï¸  Server will start but will attempt to reconnect...')
   }
 
   // Register M-Pesa routes
@@ -1568,10 +1570,10 @@ async function startServer() {
 
   // Start the HTTP server
   const server = app.listen(PORT, '0.0.0.0', () => {
-    console.log(`\nÃ¢Å“â€œ Backend server running on port ${PORT}`)
-    console.log(`Ã¢Å“â€œ Environment: ${NODE_ENV}`)
-    console.log(`Ã¢Å“â€œ API endpoints available at /api/*`)
-    console.log(`Ã¢Å“â€œ Database Status: ${dbConnected ? 'CONNECTED Ã¢Å“â€œ' : 'CONNECTING... Ã¢ÂÂ³'}`)
+    console.log(`\nâœ“ Backend server running on port ${PORT}`)
+    console.log(`âœ“ Environment: ${NODE_ENV}`)
+    console.log(`âœ“ API endpoints available at /api/*`)
+    console.log(`âœ“ Database Status: ${dbConnected ? 'CONNECTED âœ“' : 'CONNECTING... â³'}`)
     console.log(`\n`)
   })
 
@@ -1579,12 +1581,12 @@ async function startServer() {
   if (!dbConnected) {
     const reconnectInterval = setInterval(async () => {
       try {
-        console.log('Ã°Å¸â€â€ž Attempting database reconnection...')
+        console.log('ðŸ”„ Attempting database reconnection...')
         await initializeDatabase()
-        console.log('Ã¢Å“â€œ Database reconnected successfully!')
+        console.log('âœ“ Database reconnected successfully!')
         clearInterval(reconnectInterval)
       } catch (e) {
-        console.error('Ã¢ÂÂ³ Reconnection attempt failed:', e.message, '(will retry in 10 seconds)')
+        console.error('â³ Reconnection attempt failed:', e.message, '(will retry in 10 seconds)')
       }
     }, 10000) // Try every 10 seconds instead of 30
   }
@@ -1595,7 +1597,7 @@ async function runStartupDiagnostics() {
   if (!db) return
   
   try {
-    console.log('\nðŸ“Š Database Startup Diagnostics:')
+    console.log('\n📊 Database Startup Diagnostics:')
     
     const tables = [
       { name: 'offices', table: offices },
@@ -1607,19 +1609,19 @@ async function runStartupDiagnostics() {
       try {
         const result = await db.select({ count: dbCount() }).from(table)
         const rowCount = result[0]?.count ?? 0
-        console.log(`  âœ“ ${name}: ${rowCount} rows`)
+        console.log(`  ✓ ${name}: ${rowCount} rows`)
         
         // Extra check: if offices table is empty, warn about it
         if (name === 'offices' && rowCount === 0) {
-          console.warn(`  âš ï¸  WARNING: offices table is empty! API will fail without office data.`)
+          console.warn(`  ⚠️  WARNING: offices table is empty! API will fail without office data.`)
         }
       } catch (err) {
-        console.error(`  âœ— ${name}: TABLE NOT FOUND or ERROR - ${err.message}`)
+        console.error(`  ✗ ${name}: TABLE NOT FOUND or ERROR - ${err.message}`)
       }
     }
     console.log('')
   } catch (err) {
-    console.error('âš ï¸  Could not run startup diagnostics:', err.message)
+    console.error('⚠️  Could not run startup diagnostics:', err.message)
   }
 }
 
