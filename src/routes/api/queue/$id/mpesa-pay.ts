@@ -42,49 +42,81 @@ function getSuggestions(responseCode: string | number | undefined) {
 }
 
 // M-PESA Configuration
+// M-PESA Configuration - AUTO-DETECT PRODUCTION vs SANDBOX
+const SANDBOX_CONSUMER_KEY = '4PvGSK0r7RiNmZkjnEwYlQ2xAzB8sD3qF5gH6tJ9oP1u2v'
+const SANDBOX_CONSUMER_SECRET = 'wX3yZ9lM5kJ8nB2vC7pDqRsT4uFgH6jK9oL1mN3pQ4rS5tU'
+const SANDBOX_PASSKEY = 'bfb279f9ba9b9d1380007480bbe7f27425e1aa6d4ede3891ec337007a74ff42'
+
+// Load from environment
 const MPESA_CONSUMER_KEY = process.env.CONSUMER_KEY || process.env.MPESA_CONSUMER_KEY || ''
 const MPESA_CONSUMER_SECRET = process.env.CONSUMER_SECRET || process.env.MPESA_CONSUMER_SECRET || ''
-const MPESA_BUSINESS_SHORTCODE = process.env.SHORTCODE || process.env.MPESA_SHORTCODE || '174379'
+const MPESA_BUSINESS_SHORTCODE = process.env.SHORTCODE || process.env.MPESA_SHORTCODE || ''
 const MPESA_PASSKEY = process.env.PASSKEY || process.env.MPESA_PASSKEY || ''
 const MPESA_CALLBACK_URL = process.env.CALLBACK_URL || process.env.MPESA_CALLBACK_URL || 'https://jkuat-online-queue.onrender.com/api/queue/mpesa-callback'
 
-// Sandbox credentials for testing
-const SANDBOX_MODE = process.env.MPESA_ENVIRONMENT === 'sandbox' || process.env.MPESA_SANDBOX === 'true' || process.env.NODE_ENV !== 'production'
-const SANDBOX_SHORTCODE = '174379'
-const SANDBOX_PASSKEY = 'bfb279f9ba9b9d1380007480bbe7f27425e1aa6d4ede3891ec337007a74ff42'
+// AUTO-DETECT: Use production if ALL real credentials provided
+const HAS_PRODUCTION_CREDENTIALS = !!(MPESA_CONSUMER_KEY && MPESA_CONSUMER_SECRET && MPESA_PASSKEY && MPESA_BUSINESS_SHORTCODE)
+const HAS_REAL_CREDENTIALS = HAS_PRODUCTION_CREDENTIALS && 
+  MPESA_CONSUMER_KEY !== SANDBOX_CONSUMER_KEY && 
+  MPESA_CONSUMER_SECRET !== SANDBOX_CONSUMER_SECRET &&
+  MPESA_PASSKEY !== SANDBOX_PASSKEY
 
-// Get M-PESA access token
-async function getMpesaAccessToken(): Promise<string> {
+const SANDBOX_MODE = !HAS_REAL_CREDENTIALS
+
+console.log(`[mpesa-pay.ts] Mode: ${SANDBOX_MODE ? 'SANDBOX 🧪' : 'PRODUCTION 🚀'} | Credentials: ${HAS_REAL_CREDENTIALS ? 'Real' : 'Missing/Sandbox'}`)
+
+// Use production URLs if real credentials, sandbox otherwise
+const SANDBOX_SHORTCODE = '174379'
+
+// Get M-PESA access token WITH RETRY LOGIC
+async function getMpesaAccessToken(retryCount = 0, maxRetries = 3): Promise<string> {
   try {
     const auth = Buffer.from(`${MPESA_CONSUMER_KEY}:${MPESA_CONSUMER_SECRET}`).toString('base64')
     const baseUrl = SANDBOX_MODE 
       ? 'https://sandbox.safaricom.co.ke'
       : 'https://api.safaricom.co.ke'
     
-    console.log(`🔐 Requesting M-Pesa access token from ${baseUrl}`)
+    console.log(`🔐 Requesting M-Pesa access token from ${baseUrl}${retryCount > 0 ? ` (Retry ${retryCount}/${maxRetries})` : ''}`)
+    
     const response = await fetch(`${baseUrl}/oauth/v1/generate?grant_type=client_credentials`, {
       method: 'GET',
       headers: {
         Authorization: `Basic ${auth}`,
       },
+      timeout: 10000,
     })
 
     const data: any = await response.json()
     
-    if (!data.access_token) {
-      throw new Error(data.error_description || 'Failed to get access token')
+    if (!response.ok) {
+      const errorMsg = data.error_description || data.error || `HTTP ${response.status}`
+      throw new Error(`M-Pesa auth failed: ${errorMsg}`)
     }
     
-    console.log(`✅ M-Pesa access token obtained`)
+    if (!data.access_token) {
+      throw new Error(data.error_description || 'No access token in response')
+    }
+    
+    console.log(`✅ M-Pesa access token obtained (valid for ~3600 seconds)`)
     return data.access_token
   } catch (error) {
-    console.error('❌ Failed to get M-PESA access token:', error)
+    const errorMsg = error instanceof Error ? error.message : String(error)
+    
+    // Retry on network errors or 5xx errors
+    if (retryCount < maxRetries && (errorMsg.includes('timeout') || errorMsg.includes('5'))) {
+      const delay = Math.pow(2, retryCount) * 1000 // Exponential backoff: 1s, 2s, 4s
+      console.warn(`⚠️  Token request failed (${errorMsg}). Retrying in ${delay}ms...`)
+      await new Promise(r => setTimeout(r, delay))
+      return getMpesaAccessToken(retryCount + 1, maxRetries)
+    }
+    
+    console.error(`❌ Failed to get M-PESA access token (attempt ${retryCount + 1}/${maxRetries + 1}):`, errorMsg)
     throw error
   }
 }
 
-// Initiate M-PESA STK push
-async function initiateMpesaPayment(phoneNumber: string, amount: number, queueId: number, goldenRef: string) {
+// Initiate M-PESA STK push WITH RETRY LOGIC
+async function initiateMpesaPayment(phoneNumber: string, amount: number, queueId: number, goldenRef: string, retryCount = 0, maxRetries = 2) {
   try {
     const token = await getMpesaAccessToken()
     
@@ -98,7 +130,7 @@ async function initiateMpesaPayment(phoneNumber: string, amount: number, queueId
     const second = String(now.getSeconds()).padStart(2, '0')
     const timestamp = `${year}${month}${day}${hour}${minute}${second}`
 
-    // Use sandbox credentials in development, production in live
+    // Use production credentials if available, sandbox otherwise
     const shortCode = SANDBOX_MODE ? SANDBOX_SHORTCODE : MPESA_BUSINESS_SHORTCODE
     const passkey = SANDBOX_MODE ? SANDBOX_PASSKEY : MPESA_PASSKEY
 
@@ -123,9 +155,11 @@ async function initiateMpesaPayment(phoneNumber: string, amount: number, queueId
       TransactionDesc: `Golden Ticket Payment - Ref: ${goldenRef}`,
     }
 
-    console.log(`📱 Initiating STK Push to ${phoneNumber} for ${goldenRef}`)
+    console.log(`📱 Initiating STK Push${retryCount > 0 ? ` (Retry ${retryCount}/${maxRetries})` : ''}`)
+    console.log(`   Phone: ${phoneNumber}`)
     console.log(`   Amount: KES ${amount}`)
-    console.log(`   Callback URL: ${MPESA_CALLBACK_URL}`)
+    console.log(`   Reference: ${goldenRef}`)
+    console.log(`   Mode: ${SANDBOX_MODE ? 'SANDBOX' : 'PRODUCTION'}`)
 
     const response = await fetch(`${baseUrl}/mpesa/stkpush/v1/processrequest`, {
       method: 'POST',
@@ -134,6 +168,7 @@ async function initiateMpesaPayment(phoneNumber: string, amount: number, queueId
         'Content-Type': 'application/json',
       },
       body: JSON.stringify(stkPayload),
+      timeout: 10000,
     })
 
     const data: any = await response.json()
@@ -141,10 +176,9 @@ async function initiateMpesaPayment(phoneNumber: string, amount: number, queueId
     console.log(`   Response Status: ${response.status}`)
     console.log(`   Response Code: ${data.ResponseCode}`)
     console.log(`   CheckoutRequestID: ${data.CheckoutRequestID}`)
-    console.log(`   Description: ${data.ResponseDescription}`)
-    console.log(`   Full Response:`, JSON.stringify(data, null, 2))
     
     if (data.ResponseCode === '0' || data.ResponseCode === 0) {
+      console.log(`✅ STK Push successful!`)
       return {
         success: true,
         checkoutRequestId: data.CheckoutRequestID,
@@ -154,6 +188,14 @@ async function initiateMpesaPayment(phoneNumber: string, amount: number, queueId
       // Detailed error reporting
       const errorCode = data.ResponseCode || 'UNKNOWN'
       const errorMsg = data.ResponseDescription || 'Failed to initiate payment'
+      
+      // Retry on transient errors (8 = system error, blank = maybe timeout)
+      if ((errorCode === '8' || errorMsg.includes('system') || !response.ok) && retryCount < maxRetries) {
+        const delay = Math.pow(2, retryCount) * 1000 // 1s, 2s, 4s
+        console.warn(`⚠️  STK Push failed with transient error (${errorCode}). Retrying in ${delay}ms...`)
+        await new Promise(r => setTimeout(r, delay))
+        return initiateMpesaPayment(phoneNumber, amount, queueId, goldenRef, retryCount + 1, maxRetries)
+      }
       
       console.error(`❌ STK Push error: ResponseCode=${errorCode}`)
       console.error(`   Message: ${errorMsg}`)

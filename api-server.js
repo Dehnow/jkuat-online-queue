@@ -39,41 +39,73 @@ if (NODE_ENV === 'production') {
   console.warn('Ã¢Å¡Â Ã¯Â¸Â  Development mode: DATABASE_URL may not be required for local testing')
 }
 
-// M-Pesa Configuration
-// NOTE: Environment variables use these exact names in Render:
-// - CONSUMER_KEY (not MPESA_CONSUMER_KEY)
-// - CONSUMER_SECRET (not MPESA_CONSUMER_SECRET)
-// - PASSKEY (not MPESA_PASSKEY)
-// - SHORTCODE (not MPESA_SHORTCODE)
-// - CALLBACK_URL (not MPESA_CALLBACK_URL)
-// Trigger refresh v2
+// M-Pesa Configuration - AUTO-DETECT PRODUCTION vs SANDBOX
+// =========================================================
+// Environment variables (Render):
+// - CONSUMER_KEY, CONSUMER_SECRET, PASSKEY, SHORTCODE (for PRODUCTION)
+// If all are provided → AUTO uses PRODUCTION with real M-Pesa
+// If missing → AUTO falls back to SANDBOX (no real STK prompts)
+// NO need to set MPESA_SANDBOX variable anymore!
 
 const SANDBOX_CONSUMER_KEY = '4PvGSK0r7RiNmZkjnEwYlQ2xAzB8sD3qF5gH6tJ9oP1u2v'
 const SANDBOX_CONSUMER_SECRET = 'wX3yZ9lM5kJ8nB2vC7pDqRsT4uFgH6jK9oL1mN3pQ4rS5tU'
 const SANDBOX_PASSKEY = 'bfb279f9ba9b9d1380007480bbe7f27425e1aa6d4ede3891ec337007a74ff42'
 
+// Load credentials from environment (Render) or use sandbox defaults
+const CONSUMER_KEY_ENV = process.env.CONSUMER_KEY || process.env.MPESA_CONSUMER_KEY
+const CONSUMER_SECRET_ENV = process.env.CONSUMER_SECRET || process.env.MPESA_CONSUMER_SECRET
+const PASSKEY_ENV = process.env.PASSKEY || process.env.MPESA_PASSKEY
+const SHORTCODE_ENV = process.env.SHORTCODE || process.env.MPESA_SHORTCODE || process.env.MPESA_TILL_NUMBER
+
+// AUTO-DETECT: Use production if ALL real credentials provided, otherwise sandbox
+const HAS_PRODUCTION_CREDENTIALS = !!(CONSUMER_KEY_ENV && CONSUMER_SECRET_ENV && PASSKEY_ENV && SHORTCODE_ENV)
+const HAS_REAL_CREDENTIALS = HAS_PRODUCTION_CREDENTIALS && 
+  CONSUMER_KEY_ENV !== SANDBOX_CONSUMER_KEY && 
+  CONSUMER_SECRET_ENV !== SANDBOX_CONSUMER_SECRET &&
+  PASSKEY_ENV !== SANDBOX_PASSKEY
+
 const MPESA_CONFIG = {
-  isSandbox: process.env.MPESA_SANDBOX !== 'false',  // Default: true (sandbox). Set MPESA_SANDBOX=false for production
-  // Check Render environment variable names first, then MPESA_ prefixed, then sandbox defaults
-  consumerKey: process.env.CONSUMER_KEY || process.env.MPESA_CONSUMER_KEY || SANDBOX_CONSUMER_KEY,
-  consumerSecret: process.env.CONSUMER_SECRET || process.env.MPESA_CONSUMER_SECRET || SANDBOX_CONSUMER_SECRET,
-  passkey: process.env.PASSKEY || process.env.MPESA_PASSKEY || SANDBOX_PASSKEY,
-  tillNumber: process.env.SHORTCODE || process.env.MPESA_SHORTCODE || process.env.MPESA_TILL_NUMBER || '174379',
-  // IMPORTANT: M-Pesa requires the public URL for callbacks. In Render, must be HTTPS.
+  // AUTO-DETECT: Production if real credentials, otherwise sandbox
+  isSandbox: !HAS_REAL_CREDENTIALS,
+  consumerKey: HAS_REAL_CREDENTIALS ? CONSUMER_KEY_ENV : SANDBOX_CONSUMER_KEY,
+  consumerSecret: HAS_REAL_CREDENTIALS ? CONSUMER_SECRET_ENV : SANDBOX_CONSUMER_SECRET,
+  passkey: HAS_REAL_CREDENTIALS ? PASSKEY_ENV : SANDBOX_PASSKEY,
+  tillNumber: HAS_REAL_CREDENTIALS ? SHORTCODE_ENV : '174379',
   callbackUrl: process.env.CALLBACK_URL || process.env.MPESA_CALLBACK_URL || (NODE_ENV === 'production' 
     ? 'https://jkuat-online-queue.onrender.com/api/queue/mpesa-callback'
     : 'http://localhost:3000/api/queue/mpesa-callback')
 }
 
-console.log(`DEBUG MPESA_SANDBOX env var: "${process.env.MPESA_SANDBOX}"`)
-console.log(`DEBUG Condition (MPESA_SANDBOX !== 'false'): ${process.env.MPESA_SANDBOX !== 'false'}`)
-console.log(`INFO M-Pesa Mode: ${MPESA_CONFIG.isSandbox ? 'SANDBOX 🧪 (simulated payments)' : 'PRODUCTION 🚀 (real M-Pesa)'}`)
-console.log(`INFO Environment: ${NODE_ENV === 'production' ? 'PRODUCTION (Render)' : 'DEVELOPMENT'}`)
-console.log(`INFO Callback URL: ${MPESA_CONFIG.callbackUrl}`)
-console.log(`INFO Consumer Key configured: ${MPESA_CONFIG.consumerKey ? '✓ Yes (from ' + (process.env.CONSUMER_KEY ? 'CONSUMER_KEY' : process.env.MPESA_CONSUMER_KEY ? 'MPESA_CONSUMER_KEY' : 'sandbox') + ')' : '✗ No'}`)
-console.log(`INFO Consumer Secret configured: ${MPESA_CONFIG.consumerSecret ? '✓ Yes (from ' + (process.env.CONSUMER_SECRET ? 'CONSUMER_SECRET' : process.env.MPESA_CONSUMER_SECRET ? 'MPESA_CONSUMER_SECRET' : 'sandbox') + ')' : '✗ No'}`)
-console.log(`INFO Passkey configured: ${MPESA_CONFIG.passkey ? '✓ Yes (from ' + (process.env.PASSKEY ? 'PASSKEY' : process.env.MPESA_PASSKEY ? 'MPESA_PASSKEY' : 'sandbox') + ')' : '✗ No'}`)
-console.log(`INFO Till Number: ${MPESA_CONFIG.tillNumber}`)
+// Startup logging - DETAILED CREDENTIAL STATUS
+console.log(`\n🔐 M-PESA CREDENTIAL STATUS`)
+console.log(`━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━`)
+console.log(`CONSUMER_KEY env var provided: ${CONSUMER_KEY_ENV ? '✓ YES' : '✗ NO'}`)
+console.log(`CONSUMER_SECRET env var provided: ${CONSUMER_SECRET_ENV ? '✓ YES' : '✗ NO'}`)
+console.log(`PASSKEY env var provided: ${PASSKEY_ENV ? '✓ YES' : '✗ NO'}`)
+console.log(`SHORTCODE env var provided: ${SHORTCODE_ENV ? '✓ YES' : '✗ NO'}`)
+console.log(`\nAuto-detection result:`)
+console.log(`  All credentials present: ${HAS_PRODUCTION_CREDENTIALS ? '✓ YES' : '✗ NO'}`)
+console.log(`  Real credentials (not sandbox): ${HAS_REAL_CREDENTIALS ? '✓ YES' : '✗ NO'}`)
+console.log(`━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━`)
+
+if (MPESA_CONFIG.isSandbox) {
+  console.log(`\n🧪 SANDBOX MODE (Auto-detected)`)
+  console.log(`   Reason: Real credentials not provided`)
+  console.log(`   Action: Set CONSUMER_KEY, CONSUMER_SECRET, PASSKEY, SHORTCODE in Render`)
+  console.log(`   Result: STK prompts will NOT reach actual phones`)
+} else {
+  console.log(`\n🚀 PRODUCTION MODE (Auto-detected)`)
+  console.log(`   Reason: Real credentials detected`)
+  console.log(`   Result: Real STK prompts WILL be sent to M-Pesa`)
+}
+
+console.log(`\n📱 M-PESA CONFIGURATION`)
+console.log(`━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━`)
+console.log(`Mode: ${MPESA_CONFIG.isSandbox ? 'SANDBOX 🧪' : 'PRODUCTION 🚀'}`)
+console.log(`Environment: ${NODE_ENV === 'production' ? 'PRODUCTION (Render)' : 'DEVELOPMENT'}`)
+console.log(`Callback URL: ${MPESA_CONFIG.callbackUrl}`)
+console.log(`Till Number: ${MPESA_CONFIG.tillNumber}`)
+console.log(`━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n`)
 
 // Schema
 const statusEnum = pgEnum('queue_status', ['waiting', 'serving', 'served', 'cancelled'])
