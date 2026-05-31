@@ -7,7 +7,7 @@ import { eq, and, or, asc, desc, count as dbCount, sql } from 'drizzle-orm'
 import { pgTable, serial, text, timestamp, integer, pgEnum, boolean } from 'drizzle-orm/pg-core'
 import path from 'path'
 import { fileURLToPath } from 'url'
-import { initiateStkPush, getGoldenPrice, getMpesaConfig } from './mpesa.js'
+import { registerMpesaRoutes } from './mpesa.js'
 
 // Load environment variables - prioritize .env.local for development
 const NODE_ENV_INITIAL = process.env.NODE_ENV || 'development'
@@ -73,8 +73,8 @@ const MPESA_CONFIG = {
   passkey: HAS_REAL_CREDENTIALS ? PASSKEY_ENV : SANDBOX_PASSKEY,
   tillNumber: HAS_REAL_CREDENTIALS ? SHORTCODE_ENV : '174379',
   callbackUrl: process.env.CALLBACK_URL || process.env.MPESA_CALLBACK_URL || (NODE_ENV === 'production' 
-    ? 'https://jkuat-online-queue.onrender.com/api/queue/mpesa-callback'
-    : 'http://localhost:3000/api/queue/mpesa-callback')
+    ? 'https://jkuat-online-queue.onrender.com/mpesa-express-simulate/'
+    : 'http://localhost:3000/mpesa-express-simulate/')
 }
 
 // Startup logging - DETAILED CREDENTIAL STATUS
@@ -1074,266 +1074,7 @@ app.get('/api/admin/report', checkAuth, async (req, res) => {
 })
 
 // ============= GOLDEN TICKET & M-PESA ENDPOINTS =============
-
-// GET /api/queue/:id/mpesa-status - Check M-Pesa payment status
-app.get('/api/queue/:id/mpesa-status', async (req, res) => {
-  try {
-    if (!db) return res.status(503).json({ error: 'Database not ready' })
-    
-    const { id } = req.params
-    const entry = await db
-      .select({
-        id: queueEntries.id,
-        isGolden: queueEntries.isGolden,
-        mpesaStatus: queueEntries.mpesaStatus,
-        mpesaTransactionId: queueEntries.mpesaTransactionId,
-        mpesaPaidAt: queueEntries.mpesaPaidAt,
-        goldenTicketRef: queueEntries.goldenTicketRef,
-        status: queueEntries.status,
-      })
-      .from(queueEntries)
-      .where(eq(queueEntries.id, Number(id)))
-      .limit(1)
-      .then(rows => rows[0] || null)
-
-    if (!entry) {
-      return res.status(404).json({ error: 'Queue entry not found' })
-    }
-
-    res.json(entry)
-  } catch (error) {
-    console.error('Error checking M-Pesa status:', error)
-    res.status(500).json({ error: 'Internal server error' })
-  }
-})
-
-// POST /api/queue/:id/mpesa-pay - Initiate M-Pesa STK Push
-app.post('/api/queue/:id/mpesa-pay', async (req, res) => {
-  try {
-    if (!db) return res.status(503).json({ error: 'Database not ready' })
-    
-    const { id } = req.params
-    const { phoneNumber } = req.body
-
-    // Validate phone number (Kenya format)
-    if (!phoneNumber || !/^[\+]?254\d{9}$/.test(phoneNumber.replace(/\s/g, ''))) {
-      return res.status(400).json({ error: 'Invalid phone number. Use format: +254712345678' })
-    }
-
-    // Get queue entry
-    const entry = await db
-      .select()
-      .from(queueEntries)
-      .where(eq(queueEntries.id, Number(id)))
-      .limit(1)
-      .then(rows => rows[0] || null)
-
-    if (!entry) {
-      return res.status(404).json({ error: 'Queue entry not found' })
-    }
-
-    // Check if already golden
-    if (entry.isGolden) {
-      return res.status(429).json({ 
-        error: 'Already upgraded',
-        message: `This ticket is already a Golden Ticket (${entry.goldenTicketRef}). You cannot upgrade it again.`
-      })
-    }
-
-    // Check if already served or cancelled
-    if (entry.status === 'served' || entry.status === 'cancelled') {
-      return res.status(400).json({ 
-        error: 'Cannot upgrade',
-        message: `Cannot upgrade a ${entry.status} queue entry`
-      })
-    }
-
-    // Generate golden ticket reference
-    const date = new Date().toISOString().split('T')[0].replace(/-/g, '')
-    const sequence = await db
-      .select({ count: sql`cast(count(*) as integer)` })
-      .from(queueEntries)
-      .where(and(
-        eq(queueEntries.serviceType, entry.serviceType),
-        eq(queueEntries.isGolden, true),
-        sql`DATE(${queueEntries.createdAt}) = CURRENT_DATE`
-      ))
-      .then(rows => (rows[0]?.count ?? 0) + 1)
-
-    const goldenTicketRef = `GT-${entry.serviceType.toUpperCase().substring(0, 3)}-${date}-${String(sequence).padStart(3, '0')}`
-
-    // Check sandbox mode from config
-    if (MPESA_CONFIG.isSandbox) {
-      // Sandbox: Simulate successful payment
-      const checkoutRequestId = `SANDBOX_${id}_${Date.now()}`
-      
-      // Set as pending - wait for callback
-      await db
-        .update(queueEntries)
-        .set({
-          goldenTicketRef,
-          mpesaTransactionId: checkoutRequestId,
-          mpesaStatus: 'pending',
-        })
-        .where(eq(queueEntries.id, Number(id)))
-
-      console.log(`✅ SANDBOX: STK Push initiated for ${goldenTicketRef}`)
-      console.log(`📱 User should see M-Pesa prompt on phone`)
-      console.log(`⏳ Status remains PENDING until callback is received`)
-      
-      return res.status(200).json({
-        success: true,
-        checkoutRequestId,
-        responseCode: '0',
-        message: 'STK push initiated - Check your phone for M-Pesa prompt. Enter your PIN to complete payment.',
-        mpesaStatus: 'pending',
-        goldenTicketRef,
-        sandbox: true,
-      })
-    } else {
-      // Production: Call actual M-Pesa Daraja API for STK Push
-      try {
-        // Validate credentials are configured
-        if (!MPESA_CONFIG.consumerKey || !MPESA_CONFIG.consumerSecret) {
-          console.error('ERROR M-Pesa credentials not configured. Check these environment variables:')
-          console.error('  - CONSUMER_KEY (or MPESA_CONSUMER_KEY)')
-          console.error('  - CONSUMER_SECRET (or MPESA_CONSUMER_SECRET)')
-          throw new Error('M-Pesa credentials not configured. Please set CONSUMER_KEY and CONSUMER_SECRET environment variables in Render.')
-        }
-
-        // Get OAuth token from Daraja
-        const authUrl = 'https://api.safaricom.co.ke/oauth/v1/generate?grant_type=client_credentials'
-        const auth = Buffer.from(
-          `${MPESA_CONFIG.consumerKey}:${MPESA_CONFIG.consumerSecret}`
-        ).toString('base64')
-
-        let accessToken = null
-        try {
-          accessToken = await retryWithBackoff(async () => {
-            const tokenResponse = await fetch(authUrl, {
-              method: 'GET',
-              headers: {
-                'Authorization': `Basic ${auth}`,
-                'Content-Type': 'application/json'
-              },
-              timeout: 10000
-            })
-
-            const tokenData = await tokenResponse.json()
-            
-            if (!tokenResponse.ok) {
-              const errorMsg = tokenData?.error_description || tokenData?.error || tokenResponse.statusText
-              throw new Error(`HTTP ${tokenResponse.status}: ${errorMsg}`)
-            }
-
-            if (!tokenData.access_token) {
-              throw new Error('No access token in response')
-            }
-
-            return tokenData.access_token
-          }, 2, 'Requesting M-Pesa access token')
-        } catch (tokenError) {
-          console.error(`❌ Failed to get access token after retries:`, tokenError.message)
-          throw new Error(`M-Pesa authentication failed: ${tokenError.message}`)
-        }
-
-        const timestamp = new Date().toISOString().replace(/[^0-9]/g, '').slice(0, 14)
-        const password = Buffer.from(
-          `${MPESA_CONFIG.tillNumber}${MPESA_CONFIG.passkey}${timestamp}`
-        ).toString('base64')
-
-        // Format phone number to 254XXXXXXXXX format
-        let phoneNumber = req.body.phoneNumber.replace(/\D/g, '') // Remove all non-digits
-        if (!phoneNumber.startsWith('254')) {
-          // If it starts with 0, replace with 254
-          if (phoneNumber.startsWith('0')) {
-            phoneNumber = '254' + phoneNumber.slice(1)
-          } else if (!phoneNumber.startsWith('254')) {
-            // Otherwise prepend 254
-            phoneNumber = '254' + phoneNumber.slice(-9)
-          }
-        }
-
-        const stkPayload = {
-          BusinessShortCode: MPESA_CONFIG.tillNumber,
-          Password: password,
-          Timestamp: timestamp,
-          TransactionType: 'CustomerPayBillOnline',
-          Amount: 50,
-          PartyA: phoneNumber,
-          PartyB: MPESA_CONFIG.tillNumber,
-          PhoneNumber: phoneNumber,
-          CallBackURL: MPESA_CONFIG.callbackUrl,
-          AccountReference: goldenTicketRef,
-          TransactionDesc: 'Golden Ticket - Priority Queue Access'
-        }
-
-        console.log(`  📱 Sending STK Push to ${phoneNumber}...`)
-
-        // Call M-Pesa STK Push WITH RETRY
-        const stkData = await retryWithBackoff(async () => {
-          const stkResponse = await fetch('https://api.safaricom.co.ke/mpesa/stkpush/v1/processrequest', {
-            method: 'POST',
-            headers: {
-              'Authorization': `Bearer ${accessToken}`,
-              'Content-Type': 'application/json'
-            },
-            body: JSON.stringify(stkPayload),
-            timeout: 10000
-          })
-
-          const data = await stkResponse.json()
-
-          // Check for success or transient errors
-          if (data.ResponseCode === '0' || data.errorCode === '0') {
-            return data
-          } else if (data.ResponseCode === '8' || data.ResponseDescription?.includes('system')) {
-            // System error - retry
-            throw new Error(`Transient M-Pesa system error (${data.ResponseCode}): ${data.ResponseDescription}`)
-          } else {
-            // Permanent error - don't retry
-            throw new Error(`[PERMANENT] Code ${data.ResponseCode}: ${data.ResponseDescription}`)
-          }
-        }, 2, 'Sending STK Push to M-Pesa')
-
-        if (stkData.ResponseCode === '0' || stkData.errorCode === '0') {
-          // STK Push initiated successfully
-          await db
-            .update(queueEntries)
-            .set({
-              mpesaTransactionId: stkData.CheckoutRequestID,
-              mpesaStatus: 'pending',
-              goldenTicketRef,
-            })
-            .where(eq(queueEntries.id, Number(id)))
-
-          console.log(`✅ STK Push successful: ${goldenTicketRef}`)
-          console.log(`   CheckoutRequestID: ${stkData.CheckoutRequestID}`)
-          console.log(`   Phone: ${phoneNumber}`)
-
-          return res.status(200).json({
-            success: true,
-            checkoutRequestId: stkData.CheckoutRequestID,
-            responseCode: stkData.ResponseCode || stkData.errorCode,
-            customerMessage: stkData.CustomerMessage || 'STK prompt sent. Enter your PIN.',
-            message: 'STK push sent successfully.',
-            mpesaStatus: 'pending',
-            goldenTicketRef,
-            sandbox: false,
-          })
-        } else {
-          throw new Error(`STK Push failed: Code ${stkData.ResponseCode} - ${stkData.ResponseDescription}`)
-        }
-      } catch (error) {
-        console.error('ERROR Production STK Push error:', error.message)
-        throw error
-      }
-    }
-  } catch (error) {
-    console.error('Error initiating M-Pesa payment:', error)
-    return res.status(500).json({ error: 'Internal server error', details: error.message })
-  }
-})
+// Note: M-Pesa routes are registered from mpesa.js module
 
 // POST /api/queue/golden-ticket - Mark ticket as golden (for track page)
 app.post('/api/queue/golden-ticket', async (req, res) => {
@@ -1706,6 +1447,9 @@ async function startServer() {
     console.error('Ã¢ÂÅ’ Initial database connection failed:', error.message)
     console.warn('Ã¢Å¡Â Ã¯Â¸Â  Server will start but will attempt to reconnect...')
   }
+
+  // Register M-Pesa routes
+  registerMpesaRoutes(app, { db, tickets: queueEntries })
 
   // Start the HTTP server
   const server = app.listen(PORT, '0.0.0.0', () => {
