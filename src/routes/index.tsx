@@ -460,9 +460,9 @@ function StudentDashboard() {
       console.log('📱 Waiting for user to complete payment on their phone...')
       
       // Poll status every 2 seconds (wait for callback)
-      // Timeout: 10 minutes (600 seconds / 2 = 300 attempts)
+      // Timeout: 1 minute (60 seconds / 2 = 30 attempts)
       let attempts = 0
-      const MAX_ATTEMPTS = 300 // 10 minutes
+      const MAX_ATTEMPTS = 30 // 1 minute
       const POLL_INTERVAL = 2000 // 2 seconds
       
       const pollInterval = setInterval(async () => {
@@ -472,7 +472,7 @@ function StudentDashboard() {
           clearInterval(pollInterval)
           setGoldenLoading(false)
           setGoldenError(
-            '⏱️ Payment verification timed out after 10 minutes.\n' +
+            '⏱️ Payment verification timed out after 1 minute.\n' +
             'If you completed the payment, your ticket will be upgraded shortly.\n' +
             'Check your M-Pesa message for confirmation.'
           )
@@ -739,7 +739,7 @@ function StudentDashboard() {
                       onClick={() => handleUpgradeToGolden(lastTicket.id)}
                       className="flex-1 bg-gradient-to-r from-yellow-400 to-yellow-500 hover:from-yellow-500 hover:to-yellow-600 text-white px-4 py-3 rounded-lg font-bold shadow-md transition"
                     >
-                      ⭐ Upgrade to Golden Ticket (KES 50)
+                      ⭐ Upgrade to Golden Ticket (KES 200)
                     </button>
                     <button
                       onClick={() => printTicket(lastTicket)}
@@ -937,10 +937,10 @@ function StudentDashboard() {
         <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4 animate-in fade-in duration-300" onClick={() => setShowGoldenModal(false)}>
           <div className="bg-gradient-to-br from-white to-gray-50 rounded-3xl shadow-2xl max-w-md w-full overflow-hidden animate-cinematic-zoom" onClick={e => e.stopPropagation()}>
             {/* Header */}
-            <div className="relative bg-gradient-to-r from-yellow-400 to-amber-500 p-6 text-white text-center">
+            <div className="relative bg-gradient-to-r from-yellow-400 to-amber-500 p-6 text-white text-center font-['Poppins',system-ui]">
               <div className="text-4xl mb-2">⭐</div>
-              <h2 className="text-2xl font-black">Golden Ticket</h2>
-              <p className="text-yellow-50 text-sm mt-1">Priority Queue Service</p>
+              <h2 className="text-3xl font-black tracking-wider" style={{letterSpacing: '0.05em', textShadow: '2px 2px 4px rgba(0,0,0,0.2)'}}>Golden Ticket</h2>
+              <p className="text-yellow-50 text-sm mt-1 font-semibold">Priority Queue Service</p>
             </div>
 
             {/* Content */}
@@ -999,11 +999,11 @@ function StudentDashboard() {
                       <ol className="ml-4 space-y-1 text-left">
                         <li>1️⃣ M-Pesa prompt appears on your phone within seconds</li>
                         <li>2️⃣ Enter your M-Pesa PIN to authorize payment</li>
-                        <li>3️⃣ You receive M-Pesa confirmation message (KES 50 deducted)</li>
+                        <li>3️⃣ You receive M-Pesa confirmation message (KES 200 deducted)</li>
                         <li>4️⃣ This dialog updates to show ✅ Payment Successful!</li>
                       </ol>
                       <hr className="my-2" />
-                      <p className="font-semibold">⏱️ Timeout: 10 minutes. If prompt doesn't appear:</p>
+                      <p className="font-semibold">⏱️ Timeout: 1 minute. If prompt doesn't appear:</p>
                       <ul className="ml-4 space-y-1 text-left">
                         <li>✓ Verify your phone number is correct (254XXXXXXXXX)</li>
                         <li>✓ Ensure your M-Pesa account has sufficient balance</li>
@@ -1030,7 +1030,7 @@ function StudentDashboard() {
                       <strong>✨ Benefits:</strong><br/>
                       • Jump to the front of the queue<br/>
                       • Get served before regular tickets<br/>
-                      • Cost: <span className="font-bold">KES 50</span>
+                      • Cost: <span className="font-bold">KES 200</span>
                     </p>
                   </div>
 
@@ -1065,7 +1065,7 @@ function StudentDashboard() {
                       disabled={goldenLoading}
                       className="w-full bg-gradient-to-r from-yellow-400 to-amber-500 hover:from-yellow-500 hover:to-amber-600 text-white py-3 rounded-lg font-bold shadow-md hover:shadow-lg transition disabled:opacity-50 disabled:cursor-not-allowed"
                     >
-                      {goldenLoading ? 'Processing...' : 'Pay KES 50 with M-Pesa'}
+                      {goldenLoading ? 'Processing...' : 'Pay KES 200 with M-Pesa'}
                     </button>
                     <button
                       type="button"

@@ -4,7 +4,7 @@
 
 import { eq, and, sql } from 'drizzle-orm'
 
-const GOLDEN_PRICE = 50 // KES
+const GOLDEN_PRICE = 200 // KES
 
 // ---------- Configuration Helpers ----------
 function getConfig() {
