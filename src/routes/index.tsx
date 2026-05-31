@@ -165,6 +165,8 @@ function StudentDashboard() {
   const [goldenSuccess, setGoldenSuccess] = useState(false)
   const [selectedTicketForGolden, setSelectedTicketForGolden] = useState<number | null>(null)
   const [mpesaStatus, setMpesaStatus] = useState<string | null>(null)
+  const [checkoutRequestId, setCheckoutRequestId] = useState<string | null>(null)
+  const [goldenTicketRef, setGoldenTicketRef] = useState<string | null>(null)
   const queryClient = useQueryClient()
 
   useEffect(() => {
@@ -409,6 +411,8 @@ function StudentDashboard() {
     setGoldenError('')
     setGoldenSuccess(false)
     setMpesaStatus(null)
+    setCheckoutRequestId(null)
+    setGoldenTicketRef(null)
     setShowGoldenModal(true)
   }
 
@@ -454,9 +458,17 @@ function StudentDashboard() {
       }
 
       const data = await res.json()
+      const requestId = data.checkoutRequestId
+      const ticketRef = data.goldenTicketRef
+      
+      // Store CheckoutRequestID for callback verification
+      setCheckoutRequestId(requestId)
+      setGoldenTicketRef(ticketRef)
       setMpesaStatus('pending')
       
-      console.log('✅ M-Pesa payment initiated. Status:', data.mpesaStatus)
+      console.log('✅ M-Pesa payment initiated')
+      console.log(`   CheckoutRequestID: ${requestId}`)
+      console.log(`   Golden Ref: ${ticketRef}`)
       console.log('📱 Waiting for user to complete payment on their phone...')
       
       // Poll status every 2 seconds (wait for callback)
@@ -480,12 +492,14 @@ function StudentDashboard() {
         }
 
         try {
-          const statusRes = await fetch(`/api/queue/${selectedTicketForGolden}/mpesa-status`)
+          // Check callback status with CheckoutRequestID validation
+          const statusRes = await fetch(`/api/mpesa/callback-status?checkoutRequestId=${encodeURIComponent(requestId)}`)
           if (statusRes.ok) {
             const status = await statusRes.json()
             
-            if (status.mpesaStatus === 'success') {
-              console.log('✅ Payment successful! Status updated from M-Pesa callback.')
+            if (status.mpesaStatus === 'success' && status.isGolden) {
+              console.log('✅ Payment successful! Callback received and verified.')
+              console.log(`   Receipt: ${status.receiptNumber || 'N/A'}`)
               clearInterval(pollInterval)
               setMpesaStatus('success')
               setGoldenSuccess(true)
@@ -497,13 +511,16 @@ function StudentDashboard() {
                 queryClient.invalidateQueries({ queryKey: ['service-stats'] })
               }, 3000)
             } else if (status.mpesaStatus === 'failed') {
-              console.error('❌ Payment failed.')
+              console.error('❌ Payment failed - callback received.')
               clearInterval(pollInterval)
               setMpesaStatus('failed')
               setGoldenLoading(false)
-              setGoldenError('❌ Payment failed. Please check your M-Pesa message and try again.')
+              setGoldenError('❌ Payment was cancelled or failed. Please check your M-Pesa message and try again.')
             }
             // If still 'pending', keep polling (do nothing)
+          } else if (statusRes.status === 404) {
+            // Callback not yet received, keep polling
+            console.log(`   Poll ${attempts}/${MAX_ATTEMPTS}: Waiting for callback...`)
           }
         } catch (err) {
           console.error('Error checking payment status:', err)

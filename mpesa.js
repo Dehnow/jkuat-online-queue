@@ -222,6 +222,72 @@ export function registerMpesaRoutes(app, deps = {}) {
     }
   })
 
+  // GET /api/mpesa/callback-status - Check if callback has arrived for a specific CheckoutRequestID
+  app.get('/api/mpesa/callback-status', async (req, res) => {
+    try {
+      if (!db) return res.status(503).json({ error: 'Database not ready' })
+      
+      const { checkoutRequestId } = req.query
+      
+      if (!checkoutRequestId) {
+        return res.status(400).json({ error: 'checkoutRequestId query parameter required' })
+      }
+
+      // Find entry by CheckoutRequestID (stored in mpesaTransactionId)
+      const entry = await db
+        .select({
+          id: queueEntries.id,
+          queueNumber: queueEntries.queueNumber,
+          isGolden: queueEntries.isGolden,
+          goldenTicketRef: queueEntries.goldenTicketRef,
+          mpesaStatus: queueEntries.mpesaStatus,
+          mpesaTransactionId: queueEntries.mpesaTransactionId,
+          mpesaPaidAt: queueEntries.mpesaPaidAt,
+          status: queueEntries.status,
+        })
+        .from(queueEntries)
+        .where(eq(queueEntries.mpesaTransactionId, String(checkoutRequestId)))
+        .limit(1)
+        .then(rows => rows[0] || null)
+
+      if (!entry) {
+        // Callback not yet received for this CheckoutRequestID
+        return res.status(404).json({ 
+          error: 'Callback not received yet',
+          checkoutRequestId,
+          mpesaStatus: 'pending'
+        })
+      }
+
+      // Callback received - return status
+      console.log(`✅ Callback status query for ${checkoutRequestId}: ${entry.mpesaStatus} (golden=${entry.isGolden})`)
+
+      res.json({
+        id: entry.id,
+        queueNumber: entry.queueNumber,
+        isGolden: entry.isGolden,
+        goldenTicketRef: entry.goldenTicketRef,
+        mpesaStatus: entry.mpesaStatus,  // 'pending', 'success', or 'failed'
+        mpesaPaidAt: entry.mpesaPaidAt,
+        status: entry.status,
+        callbackReceived: true,
+        feedback: {
+          isPending: entry.mpesaStatus === 'pending',
+          isSuccessful: entry.isGolden && entry.mpesaStatus === 'success',
+          isFailed: entry.mpesaStatus === 'failed',
+          message: entry.isGolden 
+            ? '✅ Golden ticket activated! You now have priority status.' 
+            : entry.mpesaStatus === 'failed'
+            ? '❌ Payment was cancelled or failed.'
+            : '⏳ Waiting for M-Pesa response...'
+        }
+      })
+    } catch (error) {
+      console.error('Error checking callback status:', error)
+      res.status(500).json({ error: 'Internal server error' })
+    }
+  })
+
   // GET /api/queue/:id/mpesa-status - Check M-Pesa payment status
   app.get('/api/queue/:id/mpesa-status', async (req, res) => {
     try {
