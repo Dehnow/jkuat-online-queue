@@ -96,7 +96,7 @@ export async function initiateStkPush({ phone, amount, accountRef, description }
     PartyA: Number(phoneNorm),
     PartyB: Number(cfg.shortcode),
     PhoneNumber: Number(phoneNorm),
-    CallbackURL: cfg.callbackUrl,
+    CallBackURL: cfg.callbackUrl,
     AccountReference: String(accountRef).slice(0, 12),
     TransactionDesc: String(description || 'Payment').slice(0, 13),
   }
