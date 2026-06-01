@@ -81,80 +81,6 @@ export default function StaffDashboard() {
     enabled: !!officeId,
   })
 
-  // Print service log
-  const handlePrintLog = () => {
-    const printWindow = window.open('', '_blank')
-    if (!printWindow) return
-
-    const today = new Date().toLocaleDateString()
-    const allEntries = [...(queueData?.queue?.served || []), ...(queueData?.queue?.cancelled || [])]
-    const goldenCount = allEntries.filter((e: QueueEntry & { isGolden?: boolean }) => e.isGolden).length
-
-    const html = `
-      <!DOCTYPE html>
-      <html>
-      <head>
-        <title>Service Log - ${today}</title>
-        <style>
-          body { font-family: Arial, sans-serif; margin: 20px; }
-          h1 { text-align: center; margin-bottom: 30px; }
-          .info { margin-bottom: 20px; display: flex; gap: 40px; }
-          table { width: 100%; border-collapse: collapse; margin-bottom: 30px; }
-          th, td { padding: 12px; text-align: left; border-bottom: 1px solid #ddd; }
-          th { background-color: #f5f5f5; font-weight: bold; }
-          tr:hover { background-color: #f9f9f9; }
-          .served { color: green; font-weight: bold; }
-          .cancelled { color: red; font-weight: bold; }
-          .golden { background-color: #fffbea; }
-          .summary { margin-top: 20px; padding: 15px; background-color: #f0f0f0; }
-        </style>
-      </head>
-      <body>
-        <h1>${officeName} - Service Log</h1>
-        <div class="info">
-          <div><strong>Date:</strong> ${today}</div>
-          <div><strong>Time Generated:</strong> ${new Date().toLocaleTimeString()}</div>
-        </div>
-        <table>
-          <thead>
-            <tr>
-              <th>#</th>
-              <th>Ticket #</th>
-              <th>Customer Name</th>
-              <th>Student ID</th>
-              <th>Type</th>
-              <th>Status</th>
-              <th>Time</th>
-            </tr>
-          </thead>
-          <tbody>
-            ${allEntries.map((entry: QueueEntry & { isGolden?: boolean }, idx: number) => `
-              <tr ${entry.isGolden ? 'class="golden"' : ''}>
-                <td>${idx + 1}</td>
-                <td>#${entry.queueNumber}</td>
-                <td>${entry.name}</td>
-                <td>${entry.studentId}</td>
-                <td>${entry.isGolden ? '✨ Golden' : 'Regular'}</td>
-                <td class="${entry.status === 'served' ? 'served' : 'cancelled'}">${entry.status.toUpperCase()}</td>
-                <td>${new Date(entry.servedAt || '').toLocaleTimeString()}</td>
-              </tr>
-            `).join('')}
-          </tbody>
-        </table>
-        <div class="summary">
-          <h3>Summary</h3>
-          <p><strong>Total Served:</strong> ${queueData?.queue?.served?.length || 0}</p>
-          <p><strong>Total Cancelled:</strong> ${queueData?.queue?.cancelled?.length || 0}</p>
-          <p><strong>Golden Tickets:</strong> ${goldenCount}</p>
-        </div>
-      </body>
-      </html>
-    `
-    printWindow.document.write(html)
-    printWindow.document.close()
-    setTimeout(() => printWindow.print(), 250)
-  }
-
   // Queue action handler
   const performQueueAction = useCallback(async (action: string, queueId?: number) => {
     if (!officeId) return
@@ -179,7 +105,7 @@ export default function StaffDashboard() {
           setActiveWorkflowStep('start_service')
         } else if (action === 'start_service') {
           setActiveWorkflowStep('end_service')
-        } else if (action === 'end_service' || action === 'cancel' || action === 'confirm_gold') {
+        } else if (action === 'end_service' || action === 'cancel') {
           setActiveWorkflowStep('call_next')
         }
         await refetch()
@@ -265,13 +191,6 @@ export default function StaffDashboard() {
               {officeStatus === 'open' ? 'OPEN' : 'CLOSED'}
             </button>
             <button
-              onClick={handlePrintLog}
-              className="flex items-center gap-2 px-4 py-2 rounded-lg bg-blue-100 text-blue-700 hover:bg-blue-200 font-semibold transition-all"
-              title="Print service logs"
-            >
-              🖨️ Print Logs
-            </button>
-            <button
               onClick={handleLogout}
               className="flex items-center gap-2 px-4 py-2 rounded-lg bg-gray-200 text-gray-700 hover:bg-gray-300 font-semibold transition-all"
             >
@@ -308,42 +227,6 @@ export default function StaffDashboard() {
                   <p className="text-sm text-gray-600 mb-1">Customer Name</p>
                   <p className="font-semibold text-gray-800">{queue.serving.name}</p>
                   <p className="text-xs text-gray-500 mt-3">ID: {queue.serving.studentId}</p>
-
-                  {/* Golden Ticket Indicator */}
-                  {queue.serving.isGolden && (
-                    <div className="mt-3 p-2 bg-yellow-50 rounded-lg border border-yellow-300">
-                      <p className="text-xs font-semibold text-yellow-900">✨ Golden Ticket</p>
-                      <p className="text-xs text-yellow-800 font-mono">{queue.serving.goldenTicketRef}</p>
-                    </div>
-                  )}
-
-                  {/* Action Icons */}
-                  <div className="mt-4 flex gap-2">
-                    {queue.serving.isGolden && (
-                      <button
-                        onClick={() => performQueueAction('confirm_gold')}
-                        disabled={actionLoading}
-                        className="flex-1 flex items-center justify-center gap-2 px-3 py-2 bg-yellow-500 hover:bg-yellow-600 text-white rounded-lg font-semibold text-xs transition-colors disabled:opacity-50"
-                        title="Confirm golden ticket payment and mark as served"
-                      >
-                        <span>✓</span> CONFIRM GOLD
-                      </button>
-                    )}
-                    <button
-                      onClick={() => {
-                        if (queue.serving.isGolden && window.confirm('This will incur a 2000/= penalty. Confirm cancel?')) {
-                          performQueueAction('cancel', queue.serving.id)
-                        } else if (!queue.serving.isGolden) {
-                          performQueueAction('cancel', queue.serving.id)
-                        }
-                      }}
-                      disabled={actionLoading}
-                      className="flex-1 flex items-center justify-center gap-2 px-3 py-2 bg-red-500 hover:bg-red-600 text-white rounded-lg font-semibold text-xs transition-colors disabled:opacity-50"
-                      title="Cancel this ticket"
-                    >
-                      <span>✕</span> CANCEL
-                    </button>
-                  </div>
                 </div>
               ) : (
                 <div className="bg-white/80 rounded-xl p-4 border border-green-100 text-center">
@@ -469,7 +352,7 @@ export default function StaffDashboard() {
         {/* Service Log */}
         <div className="bg-white rounded-2xl shadow-2xl p-8 mb-8">
           <h2 className="text-2xl font-bold text-gray-800 mb-6">Service Log - Today</h2>
-
+          
           {isLoading ? (
             <div className="flex justify-center py-12">
               <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-green-600"></div>
@@ -482,7 +365,6 @@ export default function StaffDashboard() {
                     <th className="p-3 text-left">#</th>
                     <th className="p-3 text-left">Ticket #</th>
                     <th className="p-3 text-left">Customer Name</th>
-                    <th className="p-3 text-left">Type</th>
                     <th className="p-3 text-left">Status</th>
                     <th className="p-3 text-left">Completed At</th>
                   </tr>
@@ -490,29 +372,18 @@ export default function StaffDashboard() {
                 <tbody>
                   {queue.served?.length === 0 && queue.cancelled?.length === 0 ? (
                     <tr>
-                      <td colSpan={6} className="p-4 text-center text-gray-400">
+                      <td colSpan={5} className="p-4 text-center text-gray-400">
                         No completed or cancelled services yet today
                       </td>
                     </tr>
                   ) : (
                     <>
                       {/* Served entries */}
-                      {queue.served?.map((entry: QueueEntry & { isGolden?: boolean; goldenTicketRef?: string }, idx: number) => (
-                        <tr key={`served-${entry.id}`} className={`border-t border-gray-100 transition-colors ${entry.isGolden ? 'bg-yellow-50 hover:bg-yellow-100' : 'hover:bg-green-50'}`}>
+                      {queue.served?.map((entry: QueueEntry, idx: number) => (
+                        <tr key={`served-${entry.id}`} className="border-t border-gray-100 hover:bg-green-50 transition-colors">
                           <td className="p-3 text-gray-500">{idx + 1}</td>
                           <td className="p-3 font-mono font-bold text-green-600">#{entry.queueNumber}</td>
                           <td className="p-3 font-medium text-gray-800">{entry.name}</td>
-                          <td className="p-3">
-                            {entry.isGolden ? (
-                              <span className="inline-flex items-center gap-1 px-2 py-1 bg-yellow-200 text-yellow-900 rounded-full text-xs font-semibold">
-                                ✨ Golden
-                              </span>
-                            ) : (
-                              <span className="inline-flex items-center gap-1 px-2 py-1 bg-gray-200 text-gray-700 rounded-full text-xs font-semibold">
-                                Regular
-                              </span>
-                            )}
-                          </td>
                           <td className="p-3">
                             <span className="inline-flex items-center gap-1 px-3 py-1 bg-green-100 text-green-700 rounded-full text-xs font-semibold">
                               <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 20 20"><path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" /></svg>
@@ -522,24 +393,13 @@ export default function StaffDashboard() {
                           <td className="p-3 text-gray-600">{new Date(entry.servedAt || '').toLocaleTimeString()}</td>
                         </tr>
                       ))}
-
+                      
                       {/* Cancelled entries */}
-                      {queue.cancelled?.map((entry: QueueEntry & { isGolden?: boolean; goldenTicketRef?: string }, idx: number) => (
-                        <tr key={`cancelled-${entry.id}`} className={`border-t border-gray-100 transition-colors ${entry.isGolden ? 'bg-red-50 hover:bg-red-100' : 'hover:bg-gray-50'}`}>
+                      {queue.cancelled?.map((entry: QueueEntry, idx: number) => (
+                        <tr key={`cancelled-${entry.id}`} className="border-t border-gray-100 hover:bg-red-50 transition-colors">
                           <td className="p-3 text-gray-500">{(queue.served?.length || 0) + idx + 1}</td>
                           <td className="p-3 font-mono font-bold text-red-600">#{entry.queueNumber}</td>
                           <td className="p-3 font-medium text-gray-800">{entry.name}</td>
-                          <td className="p-3">
-                            {entry.isGolden ? (
-                              <span className="inline-flex items-center gap-1 px-2 py-1 bg-yellow-200 text-yellow-900 rounded-full text-xs font-semibold">
-                                ✨ Golden
-                              </span>
-                            ) : (
-                              <span className="inline-flex items-center gap-1 px-2 py-1 bg-gray-200 text-gray-700 rounded-full text-xs font-semibold">
-                                Regular
-                              </span>
-                            )}
-                          </td>
                           <td className="p-3">
                             <span className="inline-flex items-center gap-1 px-3 py-1 bg-red-100 text-red-700 rounded-full text-xs font-semibold">
                               <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 20 20"><path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clipRule="evenodd" /></svg>
