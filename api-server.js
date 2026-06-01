@@ -72,9 +72,7 @@ const MPESA_CONFIG = {
   consumerSecret: HAS_REAL_CREDENTIALS ? CONSUMER_SECRET_ENV : SANDBOX_CONSUMER_SECRET,
   passkey: HAS_REAL_CREDENTIALS ? PASSKEY_ENV : SANDBOX_PASSKEY,
   tillNumber: HAS_REAL_CREDENTIALS ? SHORTCODE_ENV : '174379',
-  callbackUrl: process.env.CALLBACK_URL || process.env.MPESA_CALLBACK_URL || (NODE_ENV === 'production' 
-    ? 'https://jkuat-online-queue.onrender.com/mpesa-express-simulate/'
-    : 'http://localhost:3000/mpesa-express-simulate/')
+  callbackUrl: process.env.CALLBACK_URL || process.env.MPESA_CALLBACK_URL || 'https://webhook.site/1af22d17-7369-4920-b044-d5c68f096b31'
 }
 
 // Startup logging - DETAILED CREDENTIAL STATUS
