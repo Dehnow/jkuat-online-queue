@@ -8,17 +8,17 @@ const GOLDEN_PRICE = 200 // KES
 
 // ---------- Configuration Helpers ----------
 function getConfig() {
-  const env = (process.env.MPESA_ENVIRONMENT || 'sandbox').toLowerCase()
+  const env = (process.env.NODE_ENV === 'production' ? 'production' : 'sandbox').toLowerCase()
   const baseUrl = env === 'production'
     ? 'https://api.safaricom.co.ke'
     : 'https://sandbox.safaricom.co.ke'
-  
+
   // Strip whitespace and quotes from env vars (common issue on hosting platforms)
   const stripValue = (val) => {
     if (!val) return null
     return String(val).trim().replace(/^["']|["']$/g, '')
   }
-  
+
   return {
     env,
     baseUrl,
@@ -26,7 +26,7 @@ function getConfig() {
     consumerSecret: stripValue(process.env.MPESA_CONSUMER_SECRET || process.env.CONSUMER_SECRET),
     passkey:        stripValue(process.env.MPESA_PASSKEY || process.env.PASSKEY),
     shortcode:      stripValue(process.env.MPESA_SHORTCODE || process.env.SHORTCODE) || '174379',
-    callbackUrl:    stripValue(process.env.MPESA_CALLBACK_URL),
+    callbackUrl:    stripValue(process.env.MPESA_CALLBACK_URL || process.env.CALLBACK_URL) || (env === 'production' ? 'https://jkuat-online-queue.onrender.com/api/mpesa/callback' : 'http://localhost:3000/api/mpesa/callback'),
   }
 }
 
