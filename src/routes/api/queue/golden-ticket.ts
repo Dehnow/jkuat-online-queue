@@ -95,6 +95,38 @@ export async function POST(request: Request) {
       })
     }
 
+    if (action === 'mark-success') {
+      // Mark the ticket as successfully paid (golden)
+      if (!entry.isGolden) {
+        return json({ 
+          error: 'Ticket is not marked as golden yet' 
+        }, { status: 400 })
+      }
+
+      // Update entry to mark payment as successful
+      await db.update(queueEntries)
+        .set({
+          mpesaStatus: 'success',
+          mpesaPaidAt: new Date(),
+        })
+        .where(eq(queueEntries.id, queueId))
+        .returning()
+
+      return json({
+        success: true,
+        message: '✅ Golden ticket activated! You now have priority status.',
+        goldenTicketData: {
+          id: entry.id,
+          goldenTicketRef: entry.goldenTicketRef,
+          queueNumber: entry.queueNumber,
+          studentId: entry.studentId,
+          serviceType: entry.serviceType,
+          mpesaStatus: 'success',
+          isGolden: true,
+        },
+      })
+    }
+
     return json({ error: 'Invalid action' }, { status: 400 })
   } catch (error) {
     console.error('Golden ticket error:', error)

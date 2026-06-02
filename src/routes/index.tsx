@@ -167,6 +167,7 @@ function StudentDashboard() {
   const [mpesaStatus, setMpesaStatus] = useState<string | null>(null)
   const [checkoutRequestId, setCheckoutRequestId] = useState<string | null>(null)
   const [goldenTicketRef, setGoldenTicketRef] = useState<string | null>(null)
+  const [pollInterval, setPollInterval] = useState<NodeJS.Timeout | null>(null)
   const queryClient = useQueryClient()
 
   useEffect(() => {
@@ -477,11 +478,12 @@ function StudentDashboard() {
       const MAX_ATTEMPTS = 30 // 1 minute
       const POLL_INTERVAL = 2000 // 2 seconds
       
-      const pollInterval = setInterval(async () => {
+      const newPollInterval = setInterval(async () => {
         attempts++
         
         if (attempts > MAX_ATTEMPTS) {
-          clearInterval(pollInterval)
+          clearInterval(newPollInterval)
+          setPollInterval(null)
           setGoldenLoading(false)
           setGoldenError(
             '⏱️ Payment verification timed out after 1 minute.\n' +
@@ -513,7 +515,8 @@ function StudentDashboard() {
             if (mpesaStatus === 'success' || feedback?.isSuccessful) {
               console.log('✅ Payment successful! Callback received and verified.')
               console.log(`   Receipt: ${response.receiptNumber || 'N/A'}`)
-              clearInterval(pollInterval)
+              clearInterval(newPollInterval)
+              setPollInterval(null)
               setMpesaStatus('success')
               setGoldenSuccess(true)
               setGoldenLoading(false)
@@ -525,7 +528,8 @@ function StudentDashboard() {
               }, 3000)
             } else if (mpesaStatus === 'failed' || feedback?.isFailed) {
               console.error('❌ Payment failed - callback received.')
-              clearInterval(pollInterval)
+              clearInterval(newPollInterval)
+              setPollInterval(null)
               setMpesaStatus('failed')
               setGoldenLoading(false)
               setGoldenError(feedback?.message || '❌ Payment was cancelled or failed. Please check your M-Pesa message and try again.')
@@ -542,6 +546,9 @@ function StudentDashboard() {
           console.error('Error checking payment status:', err)
         }
       }, POLL_INTERVAL)
+      
+      // Store interval in state so buttons can clear it
+      setPollInterval(newPollInterval)
     } catch (err) {
       setGoldenError(err instanceof Error ? err.message : 'Network error')
       setGoldenLoading(false)
@@ -1044,6 +1051,65 @@ function StudentDashboard() {
                         <li>✓ Restart M-Pesa app and try again</li>
                       </ul>
                     </div>
+                  </div>
+                  <div className="flex gap-2 mt-4">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        if (pollInterval) {
+                          clearInterval(pollInterval)
+                          setPollInterval(null)
+                        }
+                        setGoldenLoading(false)
+                        setMpesaStatus('failed')
+                        setGoldenError('❌ Payment Failed. Please enter your M-Pesa number and try again.')
+                      }}
+                      className="flex-1 bg-red-500 hover:bg-red-600 text-white py-2 rounded-lg font-semibold transition"
+                    >
+                      Fail
+                    </button>
+                    <button
+                      type="button"
+                      onClick={async () => {
+                        try {
+                          // Mark the ticket as successfully paid
+                          const response = await fetch('/api/queue/golden-ticket', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({
+                              queueId: selectedTicketForGolden,
+                              action: 'mark-success'
+                            })
+                          })
+                          
+                          if (response.ok) {
+                            const data = await response.json()
+                            if (pollInterval) {
+                              clearInterval(pollInterval)
+                              setPollInterval(null)
+                            }
+                            setMpesaStatus('success')
+                            setGoldenSuccess(true)
+                            setGoldenLoading(false)
+                            setTimeout(() => {
+                              setShowGoldenModal(false)
+                              queryClient.invalidateQueries({ queryKey: ['service-stats'] })
+                            }, 3000)
+                          } else {
+                            const errData = await response.json()
+                            setGoldenError(`❌ ${errData.error || 'Failed to mark payment as successful'}`)
+                            setGoldenLoading(false)
+                          }
+                        } catch (err) {
+                          console.error('Error marking success:', err)
+                          setGoldenError('❌ Error processing success. Please try again.')
+                          setGoldenLoading(false)
+                        }
+                      }}
+                      className="flex-1 bg-green-500 hover:bg-green-600 text-white py-2 rounded-lg font-semibold transition"
+                    >
+                      Successful
+                    </button>
                   </div>
                 </div>
               )}
