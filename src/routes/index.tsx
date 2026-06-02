@@ -22,6 +22,10 @@ type StoredTicket = {
   referenceNumber: string
   status?: string
   servedAt?: string
+  isGolden?: boolean
+  goldenTicketRef?: string
+  mpesaStatus?: string
+  mpesaPaidAt?: string
 }
 
 // Device ticket management (active tickets)
@@ -126,6 +130,10 @@ const mergeTicketHistory = (localTickets: StoredTicket[], dbTickets: QueueEntry[
       status: ticket.status,
       servedAt: ticket.servedAt,
       referenceNumber: existing?.referenceNumber || getReferenceNumber({ id: ticket.id, serviceType: ticket.serviceType, createdAt: ticket.createdAt }),
+      isGolden: existing?.isGolden || (ticket as any).isGolden,
+      goldenTicketRef: existing?.goldenTicketRef || (ticket as any).goldenTicketRef,
+      mpesaStatus: existing?.mpesaStatus || (ticket as any).mpesaStatus,
+      mpesaPaidAt: existing?.mpesaPaidAt || (ticket as any).mpesaPaidAt,
     })
   })
 
@@ -555,6 +563,32 @@ function StudentDashboard() {
     }
   }
 
+  const handleClaimGoldTicket = async (ticketId: number, serviceType: string, queueNumber: number) => {
+    try {
+      const response = await fetch('/api/queue/claim-gold', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          queueId: ticketId,
+          serviceType: serviceType
+        })
+      })
+
+      if (response.ok) {
+        const data = await response.json()
+        alert(`✅ Golden ticket claimed! Your queue number has been moved up from #${queueNumber} to approximately #${data.newPosition}`)
+        queryClient.invalidateQueries({ queryKey: ['service-stats'] })
+        queryClient.invalidateQueries({ queryKey: ['ticket-history', studentIdHeader] })
+      } else {
+        const errData = await response.json()
+        alert(`❌ ${errData.error || 'Failed to claim golden ticket'}`)
+      }
+    } catch (err) {
+      console.error('Error claiming golden ticket:', err)
+      alert('❌ Error claiming golden ticket. Please try again.')
+    }
+  }
+
   const getServiceIcon = (service: string) => {
     switch (service) {
       case 'registrar': return <Building2 className="w-6 h-6 text-green-600" />
@@ -820,13 +854,20 @@ function StudentDashboard() {
                   {combinedHistory.map(t => {
                       const statusInfo = getStatusBadge(t.status || 'waiting')
                       const StatusIcon = statusInfo.icon
+                      const isGolden = (t as StoredTicket).isGolden
+                      const goldenRef = (t as StoredTicket).goldenTicketRef
+                      const canClaimGold = isGolden && (t.status === 'waiting' || t.status === 'serving')
                       return (
-                        <div key={t.id} className="bg-gradient-to-r from-gray-50 to-gray-100 rounded-lg p-4 border border-gray-200 hover:shadow-md transition group">
-                          <div className="flex items-center justify-between">
+                        <div key={t.id} className={`rounded-lg p-4 border transition group ${
+                          isGolden 
+                            ? 'bg-gradient-to-r from-yellow-50 to-amber-50 border-yellow-300 hover:shadow-lg' 
+                            : 'bg-gradient-to-r from-gray-50 to-gray-100 border-gray-200 hover:shadow-md'
+                        }`}>
+                          <div className="flex items-start justify-between gap-3">
                             <div className="flex-1">
                               <div className="flex items-center gap-3 mb-2">
                                 <div className="text-3xl font-black" style={{color: getServiceColor(t.serviceType)}}>
-                                  #{t.queueNumber}
+                                  #{t.queueNumber}{isGolden && ' ✨'}
                                 </div>
                                 <div className="flex-1">
                                   <p className="font-semibold text-gray-800">{getServiceName(t.serviceType)}</p>
@@ -835,6 +876,7 @@ function StudentDashboard() {
                                     <span className={`px-2 py-0.5 rounded text-xs font-semibold ${statusInfo.color}`}>
                                       {statusInfo.label}
                                     </span>
+                                    {isGolden && <span className="ml-1 px-2 py-0.5 rounded text-xs font-semibold bg-yellow-200 text-yellow-800">🥇 Golden</span>}
                                   </p>
                                 </div>
                               </div>
@@ -842,13 +884,28 @@ function StudentDashboard() {
                                 <p>Ref: <span className="font-mono text-gray-700">{(t as StoredTicket).referenceNumber || getReferenceNumber(t.id)}</span></p>
                                 <p>{formatDate(t.createdAt)}</p>
                               </div>
+                              {goldenRef && (
+                                <p className="mt-2 text-xs text-amber-700 font-mono bg-amber-100 px-2 py-1 rounded">
+                                  Golden: {goldenRef}
+                                </p>
+                              )}
                             </div>
-                            <button 
-                              onClick={() => printTicket(t as StoredTicket)} 
-                              className="bg-green-600 hover:bg-green-700 text-white px-3 py-2 rounded-lg text-xs font-semibold transition shadow-md opacity-0 group-hover:opacity-100"
-                            >
-                              Print
-                            </button>
+                            <div className="flex flex-col gap-2">
+                              {canClaimGold && (
+                                <button 
+                                  onClick={() => handleClaimGoldTicket(t.id, t.serviceType, t.queueNumber)}
+                                  className="bg-gradient-to-r from-yellow-500 to-amber-500 hover:from-yellow-600 hover:to-amber-600 text-white px-3 py-2 rounded-lg text-xs font-bold transition shadow-md whitespace-nowrap"
+                                >
+                                  Claim Gold
+                                </button>
+                              )}
+                              <button 
+                                onClick={() => printTicket(t as StoredTicket)} 
+                                className="bg-green-600 hover:bg-green-700 text-white px-3 py-2 rounded-lg text-xs font-semibold transition shadow-md opacity-0 group-hover:opacity-100"
+                              >
+                                Print
+                              </button>
+                            </div>
                           </div>
                         </div>
                       )
@@ -1088,12 +1145,35 @@ function StudentDashboard() {
                               clearInterval(pollInterval)
                               setPollInterval(null)
                             }
+                            
+                            // Update ticket history with golden ticket info
+                            const studentId = studentIdHeader || sessionStorage.getItem('studentId') || ''
+                            if (studentId) {
+                              const historyKey = `ticketHistory_${studentId}`
+                              const existing = localStorage.getItem(historyKey)
+                              const history = existing ? JSON.parse(existing) : []
+                              const updatedHistory = history.map((t: StoredTicket) => 
+                                t.id === selectedTicketForGolden 
+                                  ? {
+                                      ...t,
+                                      isGolden: true,
+                                      goldenTicketRef: data.goldenTicketData?.goldenTicketRef || goldenTicketRef,
+                                      mpesaStatus: 'success',
+                                      mpesaPaidAt: new Date().toISOString()
+                                    }
+                                  : t
+                              )
+                              localStorage.setItem(historyKey, JSON.stringify(updatedHistory))
+                              setTicketHistory(dedupeStoredTickets(updatedHistory))
+                            }
+                            
                             setMpesaStatus('success')
                             setGoldenSuccess(true)
                             setGoldenLoading(false)
                             setTimeout(() => {
                               setShowGoldenModal(false)
                               queryClient.invalidateQueries({ queryKey: ['service-stats'] })
+                              queryClient.invalidateQueries({ queryKey: ['ticket-history', studentIdHeader] })
                             }, 3000)
                           } else {
                             const errData = await response.json()
