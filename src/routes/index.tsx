@@ -1112,14 +1112,54 @@ function StudentDashboard() {
                   <div className="flex gap-2 mt-4">
                     <button
                       type="button"
-                      onClick={() => {
-                        if (pollInterval) {
-                          clearInterval(pollInterval)
-                          setPollInterval(null)
+                      onClick={async () => {
+                        try {
+                          if (!checkoutRequestId) {
+                            setGoldenError('❌ No active transaction found. Please initiate payment first.')
+                            return
+                          }
+
+                          // Send failure callback payload directly to backend
+                          const res = await fetch('/api/queue/mpesa-callback', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({
+                              Body: {
+                                stkCallback: {
+                                  MerchantRequestID: 'TEST_FAIL_' + Date.now(),
+                                  CheckoutRequestID: checkoutRequestId,
+                                  ResultCode: 1,
+                                  ResultDesc: 'The service request has been rejected by user.',
+                                  CallbackMetadata: {
+                                    Item: [
+                                      { Name: 'Amount', Value: 200 },
+                                      { Name: 'MpesaReceiptNumber', Value: 'FAILED' + Date.now() },
+                                      { Name: 'AccountReference', Value: goldenTicketRef }
+                                    ]
+                                  }
+                                }
+                              }
+                            })
+                          })
+
+                          if (pollInterval) {
+                            clearInterval(pollInterval)
+                            setPollInterval(null)
+                          }
+
+                          setGoldenLoading(false)
+                          setMpesaStatus('failed')
+                          setGoldenError('❌ Payment Failed. Please enter your M-Pesa number and try again.')
+                        } catch (err) {
+                          console.error('Error simulating failed payment:', err)
+                          if (pollInterval) {
+                            clearInterval(pollInterval)
+                            setPollInterval(null)
+                          }
+                          setGoldenLoading(false)
+                          setMpesaStatus('failed')
+                          setGoldenError('❌ Payment Failed. Please enter your M-Pesa number and try again.')
                         }
-                        setGoldenLoading(false)
-                        setMpesaStatus('failed')
-                        setGoldenError('❌ Payment Failed. Please enter your M-Pesa number and try again.')
                       }}
                       className="flex-1 bg-red-500 hover:bg-red-600 text-white py-2 rounded-lg font-semibold transition"
                     >
@@ -1129,59 +1169,78 @@ function StudentDashboard() {
                       type="button"
                       onClick={async () => {
                         try {
-                          // Mark the ticket as successfully paid
-                          const response = await fetch('/api/queue/golden-ticket', {
+                          if (!checkoutRequestId) {
+                            setGoldenError('❌ No active transaction found. Please initiate payment first.')
+                            return
+                          }
+
+                          // Send success callback payload directly to backend
+                          const res = await fetch('/api/queue/mpesa-callback', {
                             method: 'POST',
                             headers: { 'Content-Type': 'application/json' },
                             body: JSON.stringify({
-                              queueId: selectedTicketForGolden,
-                              action: 'mark-success'
+                              Body: {
+                                stkCallback: {
+                                  MerchantRequestID: 'TEST_' + Date.now(),
+                                  CheckoutRequestID: checkoutRequestId,
+                                  ResultCode: 0,
+                                  ResultDesc: 'The service request has been processed successfully.',
+                                  CallbackMetadata: {
+                                    Item: [
+                                      { Name: 'Amount', Value: 200 },
+                                      { Name: 'MpesaReceiptNumber', Value: 'SIM' + Date.now() },
+                                      { Name: 'TransactionDate', Value: new Date().toISOString().replace(/[:-]/g, '').slice(0, 14) },
+                                      { Name: 'PhoneNumber', Value: goldenPhone },
+                                      { Name: 'AccountReference', Value: goldenTicketRef }
+                                    ]
+                                  }
+                                }
+                              }
                             })
                           })
-                          
-                          if (response.ok) {
-                            const data = await response.json()
-                            if (pollInterval) {
-                              clearInterval(pollInterval)
-                              setPollInterval(null)
-                            }
-                            
-                            // Update ticket history with golden ticket info
-                            const studentId = studentIdHeader || sessionStorage.getItem('studentId') || ''
-                            if (studentId) {
-                              const historyKey = `ticketHistory_${studentId}`
-                              const existing = localStorage.getItem(historyKey)
-                              const history = existing ? JSON.parse(existing) : []
-                              const updatedHistory = history.map((t: StoredTicket) => 
-                                t.id === selectedTicketForGolden 
-                                  ? {
-                                      ...t,
-                                      isGolden: true,
-                                      goldenTicketRef: data.goldenTicketData?.goldenTicketRef || goldenTicketRef,
-                                      mpesaStatus: 'success',
-                                      mpesaPaidAt: new Date().toISOString()
-                                    }
-                                  : t
-                              )
-                              localStorage.setItem(historyKey, JSON.stringify(updatedHistory))
-                              setTicketHistory(dedupeStoredTickets(updatedHistory))
-                            }
-                            
-                            setMpesaStatus('success')
-                            setGoldenSuccess(true)
-                            setGoldenLoading(false)
-                            setTimeout(() => {
-                              setShowGoldenModal(false)
-                              queryClient.invalidateQueries({ queryKey: ['service-stats'] })
-                              queryClient.invalidateQueries({ queryKey: ['ticket-history', studentIdHeader] })
-                            }, 3000)
-                          } else {
-                            const errData = await response.json()
-                            setGoldenError(`❌ ${errData.error || 'Failed to mark payment as successful'}`)
-                            setGoldenLoading(false)
+
+                          if (!res.ok) {
+                            setGoldenError('❌ Failed to process payment callback')
+                            return
                           }
+
+                          if (pollInterval) {
+                            clearInterval(pollInterval)
+                            setPollInterval(null)
+                          }
+
+                          setMpesaStatus('success')
+                          setGoldenSuccess(true)
+                          setGoldenLoading(false)
+
+                          // Update local ticket history
+                          const studentId = studentIdHeader || sessionStorage.getItem('studentId') || ''
+                          if (studentId) {
+                            const historyKey = `ticketHistory_${studentId}`
+                            const existing = localStorage.getItem(historyKey)
+                            const history = existing ? JSON.parse(existing) : []
+                            const updatedHistory = history.map((t: StoredTicket) =>
+                              t.id === selectedTicketForGolden
+                                ? {
+                                    ...t,
+                                    isGolden: true,
+                                    goldenTicketRef: goldenTicketRef,
+                                    mpesaStatus: 'success',
+                                    mpesaPaidAt: new Date().toISOString()
+                                  }
+                                : t
+                            )
+                            localStorage.setItem(historyKey, JSON.stringify(updatedHistory))
+                            setTicketHistory(dedupeStoredTickets(updatedHistory))
+                          }
+
+                          setTimeout(() => {
+                            setShowGoldenModal(false)
+                            queryClient.invalidateQueries({ queryKey: ['service-stats'] })
+                            queryClient.invalidateQueries({ queryKey: ['ticket-history', studentIdHeader] })
+                          }, 3000)
                         } catch (err) {
-                          console.error('Error marking success:', err)
+                          console.error('Error processing success:', err)
                           setGoldenError('❌ Error processing success. Please try again.')
                           setGoldenLoading(false)
                         }
