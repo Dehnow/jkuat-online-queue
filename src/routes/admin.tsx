@@ -184,11 +184,7 @@ export default function AdminPage() {
         const reportRes = await fetch('/api/admin/report', { headers: { Authorization: `Basic ${auth}` } })
         if (!reportRes.ok) throw new Error(`Report fetch failed: ${reportRes.status}`)
         const reportJson = await reportRes.json()
-        const servedEntries = Array.isArray(reportJson)
-          ? reportJson
-          : Array.isArray(reportJson.entries)
-          ? reportJson.entries
-          : []
+        const servedEntries = Array.isArray(reportJson.entries) ? reportJson.entries : []
         console.log(`[Admin] Served entries count: ${servedEntries.length}`)
         setReportData(servedEntries)
         setChartData(getHourlyServed(servedEntries))

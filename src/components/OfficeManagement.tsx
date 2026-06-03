@@ -28,7 +28,7 @@ export default function OfficeManagement({ offices, onCreateOffice, onDeleteOffi
   const [wizardStep, setWizardStep] = useState<1 | 2 | 3 | 4>(1)
   const [formData, setFormData] = useState({
     name: '',
-    serviceType: 'registrar',
+    serviceType: '',
     username: '',
     password: '',
     confirmPassword: '',
@@ -236,18 +236,16 @@ export default function OfficeManagement({ offices, onCreateOffice, onDeleteOffi
                 <div className="space-y-4">
                   <h4 className="text-lg font-semibold text-gray-800">Step 2: Service Area</h4>
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-2">Service Area</label>
-                    <select
+                    <label className="block text-sm font-medium text-gray-700 mb-2">Service Area / Designation</label>
+                    <input
+                      type="text"
                       required
                       value={formData.serviceType}
                       onChange={(e) => setFormData({ ...formData, serviceType: e.target.value })}
+                      placeholder="e.g., Registrar Office, Finance Department, ICT Support"
                       className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
-                    >
-                      {serviceOptions.map(option => (
-                        <option key={option.value} value={option.value}>{option.label}</option>
-                      ))}
-                    </select>
-                    <p className="text-xs text-gray-500 mt-2">Choose the service area that this office will support.</p>
+                    />
+                    <p className="text-xs text-gray-500 mt-2">Enter the specific service area or department name for this office</p>
                   </div>
                 </div>
               )}

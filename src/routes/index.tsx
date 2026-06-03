@@ -164,7 +164,6 @@ function StudentDashboard() {
   const [studentIdHeader, setStudentIdHeader] = useState('')
   const [ticketHistory, setTicketHistory] = useState<StoredTicket[]>([])
   const [activeTicketCount, setActiveTicketCount] = useState(0)
-  const [offices, setOffices] = useState<any[]>([])
   const [isRefreshing, setIsRefreshing] = useState(false)
   // Golden Ticket / M-Pesa states
   const [showGoldenModal, setShowGoldenModal] = useState(false)
@@ -191,27 +190,6 @@ function StudentDashboard() {
     const interval = setInterval(() => refreshActiveTickets().then(setActiveTicketCount), 30000)
     return () => clearInterval(interval)
   }, [])
-
-  useEffect(() => {
-    const fetchOffices = async () => {
-      try {
-        const res = await fetch('/api/staff/auth')
-        if (!res.ok) throw new Error(`HTTP ${res.status}`)
-        const data = await res.json()
-        setOffices(data.offices || [])
-      } catch (err) {
-        console.error('[Index] fetch offices failed:', err)
-      }
-    }
-
-    fetchOffices()
-  }, [])
-
-  const getServiceStatus = (serviceType: string) => {
-    const serviceOffices = offices.filter(office => office.serviceType === serviceType)
-    if (serviceOffices.length === 0) return 'Unknown'
-    return serviceOffices.some(office => office.status === 'open') ? 'Open' : 'Closed'
-  }
 
   // Listen for ticket creation events (same-window) and storage events (cross-tab)
   useEffect(() => {
@@ -767,13 +745,7 @@ function StudentDashboard() {
                           </div>
                           <div>
                             <p className="text-sm font-semibold text-gray-700">{s.serviceName}</p>
-                            <p className="text-xs text-gray-500">
-                              {getServiceStatus(s.serviceType) === 'Open'
-                                ? 'Open • 4:30 PM'
-                                : getServiceStatus(s.serviceType) === 'Closed'
-                                ? 'Closed • Please check later'
-                                : 'Status unavailable'}
-                            </p>
+                            <p className="text-xs text-gray-500">Open • 4:30 PM</p>
                           </div>
                         </div>
                       </div>

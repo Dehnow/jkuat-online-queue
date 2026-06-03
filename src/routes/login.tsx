@@ -40,16 +40,6 @@ export default function LoginPage() {
     }
   }
 
-  useEffect(() => {
-    fetchOperativeOffices()
-  }, [])
-
-  const getServiceStatus = (serviceId: string) => {
-    const serviceOffices = offices.filter(office => office.serviceType === serviceId)
-    if (serviceOffices.length === 0) return 'Unknown'
-    return serviceOffices.some(office => office.status === 'open') ? 'Open' : 'Closed'
-  }
-
   // Reset form and error on component mount to prevent auto-login
   useEffect(() => {
     // Clear all stored credentials on page load for security
@@ -218,12 +208,10 @@ export default function LoginPage() {
         setError(data?.error || 'Invalid username or password')
         setLoading(false)
       } else {
-        const data = await res.json()
         sessionStorage.setItem('staffAuth', btoa(`${staffUsername}:${staffPassword}`))
         sessionStorage.setItem('userRole', 'staff')
         sessionStorage.setItem('officeId', String(selectedOffice.id))
         sessionStorage.setItem('officeName', selectedOffice.name)
-        sessionStorage.setItem('officeStatus', data.office?.status || 'open')
         navigate({ to: '/staff-dashboard' })
       }
     } catch (err) {
@@ -511,6 +499,9 @@ export default function LoginPage() {
                             <h4 className="text-lg font-semibold text-gray-900">{office.name}</h4>
                             <p className="text-sm text-gray-500">{office.serviceType}</p>
                           </div>
+                          <span className={`px-3 py-1 rounded-full text-xs uppercase tracking-wide font-medium ${office.status === 'open' ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}>
+                            {office.status === 'open' ? 'Open' : 'Closed'}
+                          </span>
                         </div>
                       </button>
                     ))}
@@ -616,13 +607,7 @@ export default function LoginPage() {
                           </div>
                           <div>
                             <h3 className="text-2xl font-bold text-gray-800">{service.serviceName}</h3>
-                            <p className="text-gray-500 text-sm">
-                              {getServiceStatus(service.serviceId) === 'Open'
-                                ? 'Open • Closes 4:30 PM'
-                                : getServiceStatus(service.serviceId) === 'Closed'
-                                ? 'Closed • Please check later'
-                                : 'Status unavailable'}
-                            </p>
+                            <p className="text-gray-500 text-sm">Open • Closes 4:30 PM</p>
                           </div>
                         </div>
                         <div className="text-right">
