@@ -1,6 +1,8 @@
 ﻿import express from 'express'
 import cors from 'cors'
 import dotenv from 'dotenv'
+import { createServer } from 'http'
+import { Server } from 'socket.io'
 import { drizzle } from 'drizzle-orm/postgres-js'
 import postgres from 'postgres'
 import { eq, and, or, asc, desc, not, count as dbCount, sql } from 'drizzle-orm'
@@ -1068,6 +1070,108 @@ app.get('/api/admin/report', checkAuth, async (req, res) => {
   } catch (error) {
     console.error('Error fetching report:', error)
     res.status(500).json({ error: 'Internal server error' })
+  }
+})
+
+// POST /api/call-next - Staff dashboard call next customer with real-time notifications
+app.post('/api/call-next', checkAuth, async (req, res) => {
+  try {
+    if (!db) {
+      console.error('Database not initialized for POST /api/call-next')
+      return res.status(503).json({ error: 'Database not ready' })
+    }
+
+    const { officeId, counter = 'Counter 1' } = req.body
+
+    if (!officeId) {
+      return res.status(400).json({ error: 'Missing officeId' })
+    }
+
+    // Check if any customers are waiting
+    const waitingCount = await db.query.queueEntries.findFirst({
+      where: and(
+        eq(queueEntries.officeId, officeId),
+        eq(queueEntries.status, 'waiting')
+      ),
+    })
+
+    if (!waitingCount) {
+      return res.status(400).json({ message: 'No customers in line.' })
+    }
+
+    // Priority: Golden tickets with successful M-Pesa payment first
+    let nextCustomer = await db.query.queueEntries.findFirst({
+      where: and(
+        eq(queueEntries.officeId, officeId),
+        eq(queueEntries.status, 'waiting'),
+        eq(queueEntries.isGolden, true),
+        eq(queueEntries.mpesaStatus, 'success')
+      ),
+      orderBy: (table, { asc }) => [asc(table.queueNumber)],
+    })
+
+    // Fallback: Regular waiting customer
+    if (!nextCustomer) {
+      nextCustomer = await db.query.queueEntries.findFirst({
+        where: and(
+          eq(queueEntries.officeId, officeId),
+          eq(queueEntries.status, 'waiting'),
+          eq(queueEntries.isGolden, false)
+        ),
+        orderBy: (table, { asc }) => [asc(table.queueNumber)],
+      })
+    }
+
+    if (!nextCustomer) {
+      return res.status(404).json({ error: 'No waiting customers found' })
+    }
+
+    // Update customer status to serving
+    await db.update(queueEntries)
+      .set({ status: 'serving' })
+      .where(eq(queueEntries.id, nextCustomer.id))
+
+    // Format ticket label
+    const ticketLabel = nextCustomer.isGolden && nextCustomer.mpesaStatus === 'success'
+      ? `${nextCustomer.queueNumber} (GOLDEN TICKET)`
+      : nextCustomer.queueNumber.toString()
+
+    const responseData = {
+      success: true,
+      calledUser: {
+        ticketId: nextCustomer.id,
+        queueNumber: nextCustomer.queueNumber,
+        name: nextCustomer.name,
+        studentId: nextCustomer.studentId,
+        phone: nextCustomer.phone,
+        isGolden: nextCustomer.isGolden,
+      },
+      counter,
+      message: `Proceed to ${counter}`,
+      ticketLabel,
+      isGoldenTicket: nextCustomer.isGolden && nextCustomer.mpesaStatus === 'success',
+    }
+
+    // Broadcast via Socket.IO if available (real-time notification to student)
+    if (req.app.locals.io) {
+      req.app.locals.io.to(`ticket-${nextCustomer.id}`).emit('summon-student', {
+        message: `Proceed to ${counter}`,
+        ticket: {
+          ticketId: nextCustomer.id,
+          queueNumber: nextCustomer.queueNumber,
+          name: nextCustomer.name,
+          studentId: nextCustomer.studentId,
+        }
+      })
+      console.log(`[Call Next] Broadcasted summon to ticket-${nextCustomer.id}`)
+    }
+
+    console.log(`[Call Next] Ticket ${nextCustomer.queueNumber} called to ${counter}`)
+
+    return res.json(responseData)
+  } catch (err) {
+    console.error('[Call Next] Error:', err)
+    return res.status(500).json({ error: 'Failed to call next customer' })
   }
 })
 
