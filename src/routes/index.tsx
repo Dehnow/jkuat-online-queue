@@ -176,10 +176,6 @@ function StudentDashboard() {
   const [checkoutRequestId, setCheckoutRequestId] = useState<string | null>(null)
   const [goldenTicketRef, setGoldenTicketRef] = useState<string | null>(null)
   const [pollInterval, setPollInterval] = useState<NodeJS.Timeout | null>(null)
-  // Real-time summon alerts (from staff call-next)
-  const [showSummonAlert, setShowSummonAlert] = useState(false)
-  const [summonedTicket, setSummonedTicket] = useState<any>(null)
-  const [summonMessage, setSummonMessage] = useState('')
   const queryClient = useQueryClient()
 
   useEffect(() => {
@@ -260,73 +256,6 @@ function StudentDashboard() {
       return () => clearTimeout(timer)
     }
   }, [showTicketModal])
-
-  // Socket.IO real-time notifications (optional enhancement)
-  // When staff calls next, this hook listens for summon-student events and alerts the student
-  useEffect(() => {
-    const initSocketIO = async () => {
-      try {
-        // Dynamically import Socket.IO client only if available
-        const { io } = await import('socket.io-client')
-        
-        const socket = io(window.location.origin, {
-          transports: ['websocket', 'polling'],
-          reconnection: true,
-          reconnectionDelay: 1000,
-          reconnectionDelayMax: 5000,
-          reconnectionAttempts: 5
-        })
-
-        socket.on('connect', () => {
-          console.log('[Socket.IO] Connected to server')
-          
-          // Register all active tickets with the server for real-time notifications
-          const ticketIds = getDeviceTicketIds()
-          ticketIds.forEach(ticketId => {
-            socket.emit('register-student-ticket', ticketId)
-            console.log(`[Socket.IO] Registered ticket ${ticketId}`)
-          })
-        })
-
-        // Listen for summon event - triggered when staff calls next
-        socket.on('summon-student', (data) => {
-          console.log('[Socket.IO] Student summoned:', data)
-          
-          // Show the fullscreen alert modal
-          setShowSummonAlert(true)
-          setSummonedTicket(data.ticket)
-          setSummonMessage(data.message)
-
-          // Play notification sound
-          try {
-            const audio = new Audio('data:audio/wav;base64,UklGRiYAAABXQVZFZm10IBAAAAABAAEAQB8AAAB9AAACABAAZGF0YQIAAAAAAA==')
-            audio.play().catch(() => {})
-          } catch (e) {}
-
-          // Optional: Text-to-speech notification
-          if ('speechSynthesis' in window) {
-            const utterance = new SpeechSynthesisUtterance(
-              `Ticket ${data.ticket.queueNumber}, ${data.message}`
-            )
-            window.speechSynthesis.speak(utterance)
-          }
-        })
-
-        socket.on('disconnect', () => {
-          console.log('[Socket.IO] Disconnected from server')
-        })
-
-        return () => {
-          socket.disconnect()
-        }
-      } catch (err) {
-        // Socket.IO not available - will use polling fallback
-        console.log('[Real-time] Socket.IO not available, using polling fallback')
-      }
-    }
-
-    initSocketIO()
-  }, [])
 
   // Live queue status using TanStack Query (updates every 10 seconds when stale)
   const { data: serviceStats = [], isLoading: isFetchingStats } = useQuery({
@@ -1095,77 +1024,6 @@ function StudentDashboard() {
 
               {/* Footer Note */}
               <p className="text-center text-xs text-gray-500 mt-4">JKUAT Digital Queue System • Secure & Encrypted</p>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* 🔔 Real-time Call Next Summon Alert Modal */}
-      {showSummonAlert && summonedTicket && (
-        <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-[9999] p-4 animate-in fade-in duration-300" onClick={() => setShowSummonAlert(false)}>
-          <div className="bg-gradient-to-br from-white to-gray-50 rounded-3xl shadow-2xl max-w-md w-full overflow-hidden animate-bounce" onClick={e => e.stopPropagation()}>
-            {/* Alert Header - Red Alert Theme */}
-            <div className="relative bg-gradient-to-r from-red-600 to-red-500 p-8 text-white text-center">
-              <div className="text-6xl mb-4 animate-pulse">🚨</div>
-              <h2 className="text-3xl font-black" style={{letterSpacing: '0.05em'}}>ATTENTION!</h2>
-              <p className="text-red-100 text-sm mt-2">You're being called to service</p>
-            </div>
-
-            {/* Divider */}
-            <div className="h-1 bg-gradient-to-r from-red-400 via-red-500 to-red-400"></div>
-
-            {/* Alert Details */}
-            <div className="p-8">
-              <div className="space-y-6">
-                {/* Main Message */}
-                <div className="text-center">
-                  <p className="text-lg font-bold text-gray-800 mb-2">{summonMessage}</p>
-                </div>
-
-                {/* Ticket Badge */}
-                <div className="bg-gradient-to-br from-amber-50 to-yellow-50 border-4 border-yellow-400 rounded-2xl p-6 text-center">
-                  <p className="text-xs font-bold text-gray-600 mb-2">TICKET NUMBER</p>
-                  <div className="text-6xl font-black text-yellow-600 mb-2">
-                    #{summonedTicket.queueNumber}
-                  </div>
-                  <p className="text-sm font-semibold text-gray-700">
-                    {summonedTicket.name}
-                  </p>
-                </div>
-
-                {/* Counter Info */}
-                <div className="bg-blue-50 border-2 border-blue-300 rounded-lg p-4 text-center">
-                  <p className="text-xs text-blue-600 font-bold mb-1">PROCEED TO</p>
-                  <p className="text-2xl font-bold text-blue-700">Counter 1</p>
-                </div>
-
-                {/* Countdown / Timer */}
-                <div className="bg-gray-100 rounded-lg p-3 text-center">
-                  <p className="text-xs text-gray-600 mb-1">⏱️ Time Called</p>
-                  <p className="text-sm font-semibold text-gray-800">
-                    {new Date().toLocaleTimeString([], {hour: '2-digit', minute: '2-digit', second: '2-digit'})}
-                  </p>
-                </div>
-
-                {/* Urgent Message */}
-                <div className="bg-red-50 border-2 border-red-300 rounded-lg p-3 text-center">
-                  <p className="text-xs font-bold text-red-700 mb-1">⚠️ URGENT</p>
-                  <p className="text-sm text-red-800">Proceed immediately to avoid missing your turn!</p>
-                </div>
-              </div>
-
-              {/* Action Button */}
-              <div className="mt-8">
-                <button
-                  onClick={() => setShowSummonAlert(false)}
-                  className="w-full bg-gradient-to-r from-green-600 to-green-500 text-white py-4 rounded-lg font-bold shadow-lg hover:shadow-xl transition text-lg"
-                >
-                  I am Proceeding
-                </button>
-              </div>
-
-              {/* Footer */}
-              <p className="text-center text-xs text-gray-500 mt-4">Real-time notification via JKUAT Queue System</p>
             </div>
           </div>
         </div>

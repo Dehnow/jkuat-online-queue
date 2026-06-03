@@ -249,38 +249,23 @@ export default function AdminPage() {
   const serveNext = async () => {
     setActionLoading(true)
     try {
-      console.log(`[Admin] Calling next customer for office: ${selectedOffice}`)
-      
-      const res = await fetch('/api/call-next', {
+      console.log(`[Admin] Serving next for service: ${selectedOffice}`)
+      const res = await fetch('/api/admin/serve', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', Authorization: `Basic ${auth}` },
-        body: JSON.stringify({ 
-          officeId: selectedOffice,
-          counter: 'Counter 1' // Can be made dynamic later
-        }),
+        body: JSON.stringify({ serviceType: selectedOffice, action: 'serve_next' }),
       })
       
       if (!res.ok) {
-        const errorData = await res.json()
-        console.error(`[Admin] Call Next failed:`, errorData)
-        alert(errorData.message || errorData.error || 'Failed to call next customer')
-        setActionLoading(false)
-        return
+        console.error(`[Admin] Serve Next failed with status ${res.status}`)
+        throw new Error(`Serve failed: ${res.status}`)
       }
       
       const data = await res.json()
-      console.log(`[Admin] Call Next successful:`, data)
-      
-      // Show confirmation alert
-      if (data.success) {
-        alert(`Called: ${data.calledUser.name} (Ticket #${data.calledUser.queueNumber}) to ${data.counter}`)
-      }
-      
-      // Refresh queue data
+      console.log(`[Admin] Serve successful:`, data)
       await fetchAllData()
     } catch (err) {
-      console.error('[Admin] Call Next error:', err)
-      alert('Error calling next customer: ' + (err instanceof Error ? err.message : 'Unknown error'))
+      console.error('[Admin] Serve Next error:', err)
     } finally {
       setActionLoading(false)
     }
