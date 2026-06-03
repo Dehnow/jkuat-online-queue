@@ -1,5 +1,5 @@
 import { useNavigate, useParams } from '@tanstack/react-router'
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { Building2, Banknote, Headphones, ArrowLeft, Download, Search } from 'lucide-react'
 
 type QueueEntry = {
@@ -55,39 +55,48 @@ export default function AdminServiceReportPage() {
     setLoggedIn(true)
   }, [])
 
+  const fetchServiceReport = useCallback(async () => {
+    try {
+      setLoading(true)
+      const res = await fetch('/api/admin/report', {
+        headers: { Authorization: `Basic ${auth}` },
+      })
+
+      if (!res.ok) {
+        throw new Error(`Report fetch failed: ${res.status}`)
+      }
+
+      const reportJson = await res.json()
+      const allEntries = Array.isArray(reportJson.entries) ? reportJson.entries : []
+      
+      const serviceEntries = allEntries.filter(
+        (entry: QueueEntry) => entry.serviceType === service
+      )
+      
+      setServiceData(serviceEntries)
+    } catch (err) {
+      console.error('[AdminServiceReport] Error fetching report:', err)
+    } finally {
+      setLoading(false)
+    }
+  }, [auth, service])
+
   // Fetch service-specific report
   useEffect(() => {
     if (!loggedIn || !auth) return
+    fetchServiceReport()
+  }, [loggedIn, auth, service, fetchServiceReport])
 
-    const fetchServiceReport = async () => {
-      try {
-        setLoading(true)
-        const res = await fetch('/api/admin/report', {
-          headers: { Authorization: `Basic ${auth}` },
-        })
+  useEffect(() => {
+    if (!loggedIn || !auth) return
 
-        if (!res.ok) {
-          throw new Error(`Report fetch failed: ${res.status}`)
-        }
-
-        const reportJson = await res.json()
-        const allEntries = Array.isArray(reportJson.entries) ? reportJson.entries : []
-        
-        // Filter entries for this specific service
-        const serviceEntries = allEntries.filter(
-          (entry: QueueEntry) => entry.serviceType === service
-        )
-        
-        setServiceData(serviceEntries)
-      } catch (err) {
-        console.error('[AdminServiceReport] Error fetching report:', err)
-      } finally {
-        setLoading(false)
-      }
+    const refreshHandler = () => {
+      fetchServiceReport()
     }
 
-    fetchServiceReport()
-  }, [loggedIn, auth, service])
+    window.addEventListener('serviceHistoryUpdated', refreshHandler)
+    return () => window.removeEventListener('serviceHistoryUpdated', refreshHandler)
+  }, [loggedIn, auth, service, fetchServiceReport])
 
   if (!loggedIn) return null
 
@@ -139,6 +148,13 @@ export default function AdminServiceReportPage() {
       <header className="sticky top-0 z-30 bg-white/80 backdrop-blur-md border-b border-gray-200 shadow-sm">
         <div className="max-w-7xl mx-auto px-6 py-4 flex items-center justify-between">
           <div className="flex items-center gap-4">
+            <button
+              onClick={() => window.print()}
+              className="flex items-center gap-2 border border-gray-300 bg-white text-gray-700 px-4 py-2 rounded-xl hover:bg-gray-50 transition"
+            >
+              <Download className="w-4 h-4" />
+              Print
+            </button>
             <button
               onClick={() => navigate({ to: '/admin' })}
               className="flex items-center justify-center w-10 h-10 rounded-full hover:bg-gray-100 transition"

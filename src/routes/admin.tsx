@@ -264,12 +264,48 @@ export default function AdminPage() {
       const data = await res.json()
       console.log(`[Admin] Serve successful:`, data)
       await fetchAllData()
+      try {
+        window.dispatchEvent(new Event('serviceHistoryUpdated'))
+      } catch (e) {
+        console.warn('[Admin] Unable to dispatch service history update event', e)
+      }
     } catch (err) {
       console.error('[Admin] Serve Next error:', err)
     } finally {
       setActionLoading(false)
     }
   }
+
+  const resetAllQueues = async () => {
+    if (!window.confirm('⚠️ Are you sure you want to reset ALL queues? This will clear all queue entries and prepare the system for the next day.')) {
+      return
+    }
+    
+    setActionLoading(true)
+    try {
+      console.log('[Admin] Resetting all queues...')
+      const res = await fetch('/api/admin/reset', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Basic ${auth}` },
+      })
+      
+      if (!res.ok) {
+        console.error(`[Admin] Reset failed with status ${res.status}`)
+        throw new Error(`Reset failed: ${res.status}`)
+      }
+      
+      const data = await res.json()
+      console.log('[Admin] Reset successful:', data)
+      await fetchAllData()
+      alert('✅ All queues have been reset successfully!')
+    } catch (err) {
+      console.error('[Admin] Reset error:', err)
+      alert('❌ Failed to reset queues. Please try again.')
+    } finally {
+      setActionLoading(false)
+    }
+  }
+
 
   if (!loggedIn) return null
 
@@ -347,6 +383,29 @@ export default function AdminPage() {
 
         {activeTab === 'queue' && (
           <>
+            {/* Reset Queues Section */}
+            <div className="bg-red-50 border border-red-200 rounded-2xl shadow-md p-6 mb-8">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-3">
+                  <div className="w-12 h-12 bg-red-100 rounded-full flex items-center justify-center">
+                    <svg className="w-6 h-6 text-red-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" /></svg>
+                  </div>
+                  <div>
+                    <h3 className="text-lg font-bold text-red-700">Reset All Queues</h3>
+                    <p className="text-sm text-red-600">Clear all entries and prepare for the next day</p>
+                  </div>
+                </div>
+                <button
+                  onClick={resetAllQueues}
+                  disabled={actionLoading}
+                  className="bg-red-600 hover:bg-red-700 text-white px-6 py-3 rounded-xl font-semibold shadow-md hover:shadow-lg transition disabled:opacity-50 flex items-center gap-2"
+                >
+                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>
+                  {actionLoading ? 'Resetting...' : 'Reset All Queues'}
+                </button>
+              </div>
+            </div>
+
             {/* Summary Cards */}
             <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8">
               <div
