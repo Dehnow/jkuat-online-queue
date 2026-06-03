@@ -576,7 +576,7 @@ function StudentDashboard() {
 
       if (response.ok) {
         const data = await response.json()
-        alert(`✅ Golden ticket claimed! Your queue number has been moved up from #${queueNumber} to approximately #${data.newPosition}`)
+        alert(`✅ ${data.message}\nNew queue number: #${data.newQueueNumber}\nNew seat in line: ${data.newPosition}`)
         queryClient.invalidateQueries({ queryKey: ['service-stats'] })
         queryClient.invalidateQueries({ queryKey: ['ticket-history', studentIdHeader] })
       } else {
@@ -856,7 +856,7 @@ function StudentDashboard() {
                       const StatusIcon = statusInfo.icon
                       const isGolden = (t as StoredTicket).isGolden
                       const goldenRef = (t as StoredTicket).goldenTicketRef
-                      const canClaimGold = isGolden && (t.status === 'waiting' || t.status === 'serving')
+                      const canClaimGold = isGolden && t.status === 'waiting'
                       return (
                         <div key={t.id} className={`rounded-lg p-4 border transition group ${
                           isGolden 

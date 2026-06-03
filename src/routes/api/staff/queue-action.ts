@@ -30,6 +30,7 @@ export async function POST(request: Request) {
             eq(queueEntries.isGolden, true),
             eq(queueEntries.mpesaStatus, 'success')
           ),
+          orderBy: (table, { asc }) => [asc(table.queueNumber)],
         })
 
         // If no golden tickets, get regular waiting entry
@@ -40,6 +41,7 @@ export async function POST(request: Request) {
               eq(queueEntries.status, 'waiting'),
               eq(queueEntries.isGolden, false)
             ),
+            orderBy: (table, { asc }) => [asc(table.queueNumber)],
           })
         }
 

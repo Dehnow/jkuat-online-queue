@@ -3,7 +3,7 @@ import cors from 'cors'
 import dotenv from 'dotenv'
 import { drizzle } from 'drizzle-orm/postgres-js'
 import postgres from 'postgres'
-import { eq, and, or, asc, desc, count as dbCount, sql } from 'drizzle-orm'
+import { eq, and, or, asc, desc, not, count as dbCount, sql } from 'drizzle-orm'
 import { pgTable, serial, text, timestamp, integer, pgEnum, boolean } from 'drizzle-orm/pg-core'
 import path from 'path'
 import { fileURLToPath } from 'url'
@@ -1148,6 +1148,123 @@ app.post('/api/queue/golden-ticket', async (req, res) => {
   } catch (error) {
     console.error('Error marking golden ticket:', error)
     return res.status(500).json({ error: 'Failed to process golden ticket request', details: error.message })
+  }
+})
+
+// POST /api/queue/claim-gold - Reposition a paid golden ticket into the golden priority line
+app.post('/api/queue/claim-gold', async (req, res) => {
+  try {
+    if (!db) return res.status(503).json({ error: 'Database not ready' })
+
+    const { queueId, serviceType } = req.body
+
+    if (!queueId || !serviceType) {
+      return res.status(400).json({ error: 'Missing required fields: queueId and serviceType' })
+    }
+
+    const queueIdNum = Number(queueId)
+    const entry = await db
+      .select()
+      .from(queueEntries)
+      .where(eq(queueEntries.id, queueIdNum))
+      .limit(1)
+      .then((rows) => rows[0] || null)
+
+    if (!entry) {
+      return res.status(404).json({ error: 'Queue entry not found' })
+    }
+
+    if (!entry.isGolden || entry.mpesaStatus !== 'success') {
+      return res.status(400).json({ error: 'This ticket has not completed the golden ticket payment process' })
+    }
+
+    if (entry.status !== 'waiting') {
+      return res.status(400).json({
+        error: 'Golden claim is only available while your ticket is still waiting in line',
+        message: 'Your ticket is already being served or has already left the waiting queue',
+      })
+    }
+
+    const waiting = await db
+      .select()
+      .from(queueEntries)
+      .where(
+        and(
+          eq(queueEntries.serviceType, entry.serviceType),
+          eq(queueEntries.status, 'waiting')
+        )
+      )
+      .orderBy(asc(queueEntries.queueNumber))
+
+    const currentIndex = waiting.findIndex((t) => t.id === queueIdNum)
+    if (currentIndex === -1) {
+      return res.status(404).json({ error: 'Ticket not found in active waiting queue' })
+    }
+
+    const waitingWithoutGolden = waiting.filter((t) => t.id !== queueIdNum)
+    const successfulGoldWaiting = waitingWithoutGolden.filter(
+      (t) => t.isGolden && t.mpesaStatus === 'success'
+    )
+
+    let targetPosition = 0
+    if (successfulGoldWaiting.length === 0) {
+      targetPosition = 0
+    } else if (successfulGoldWaiting.length <= 3) {
+      const lastGold = successfulGoldWaiting[successfulGoldWaiting.length - 1]
+      targetPosition = waitingWithoutGolden.findIndex((t) => t.queueNumber > lastGold.queueNumber)
+      if (targetPosition === -1) targetPosition = waitingWithoutGolden.length
+    } else {
+      const thirdGold = successfulGoldWaiting[2]
+      targetPosition = waitingWithoutGolden.findIndex((t) => t.queueNumber > thirdGold.queueNumber)
+      if (targetPosition === -1) targetPosition = waitingWithoutGolden.length
+    }
+
+    if (currentIndex <= targetPosition) {
+      return res.json({
+        success: true,
+        message: 'Your golden ticket is already in the correct priority position.',
+        currentQueueNumber: entry.queueNumber,
+        currentPosition: currentIndex + 1,
+      })
+    }
+
+    let insertionQueueNumber = entry.queueNumber
+    if (targetPosition === 0) {
+      insertionQueueNumber = waitingWithoutGolden[0]?.queueNumber ?? entry.queueNumber
+    } else if (targetPosition >= waitingWithoutGolden.length) {
+      insertionQueueNumber = (waitingWithoutGolden[waitingWithoutGolden.length - 1]?.queueNumber ?? entry.queueNumber) + 1
+    } else {
+      insertionQueueNumber = waitingWithoutGolden[targetPosition - 1].queueNumber + 1
+    }
+
+    await db
+      .update(queueEntries)
+      .set({ queueNumber: sql`${queueEntries.queueNumber} + 1` })
+      .where(
+        and(
+          eq(queueEntries.serviceType, entry.serviceType),
+          eq(queueEntries.status, 'waiting'),
+          not(eq(queueEntries.id, queueIdNum)),
+          sql`${queueEntries.queueNumber} >= ${insertionQueueNumber}`
+        )
+      )
+
+    await db
+      .update(queueEntries)
+      .set({ queueNumber: insertionQueueNumber })
+      .where(eq(queueEntries.id, queueIdNum))
+
+    return res.json({
+      success: true,
+      message: 'Successfully claimed gold status. Your ticket has been moved into the golden priority line.',
+      oldQueueNumber: entry.queueNumber,
+      newQueueNumber: insertionQueueNumber,
+      newPosition: targetPosition + 1,
+      totalWaiting: waiting.length,
+    })
+  } catch (error) {
+    console.error('Error claiming gold ticket:', error)
+    return res.status(500).json({ error: 'Failed to claim golden ticket', details: error.message })
   }
 })
 
