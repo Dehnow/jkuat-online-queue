@@ -50,6 +50,7 @@ export default function StaffDashboard() {
   useEffect(() => {
     const office = sessionStorage.getItem('officeId')
     const name = sessionStorage.getItem('officeName')
+    const status = sessionStorage.getItem('officeStatus') as 'open' | 'closed' | null
     const auth = sessionStorage.getItem('staffAuth')
     const role = sessionStorage.getItem('userRole')
 
@@ -60,6 +61,9 @@ export default function StaffDashboard() {
 
     setOfficeId(parseInt(office))
     setOfficeName(name || 'Office')
+    if (status === 'open' || status === 'closed') {
+      setOfficeStatus(status)
+    }
   }, [navigate])
 
   // Update current time
@@ -120,6 +124,14 @@ export default function StaffDashboard() {
     }
   }, [officeId, queueData, refetch])
 
+  useEffect(() => {
+    if (queueData?.office) {
+      setOfficeStatus(queueData.office.status)
+      setOfficeName(queueData.office.name)
+      sessionStorage.setItem('officeStatus', queueData.office.status)
+    }
+  }, [queueData])
+
   // Toggle office status
   const toggleOfficeStatus = async () => {
     if (!officeId) return
@@ -134,14 +146,8 @@ export default function StaffDashboard() {
 
       if (res.ok) {
         setOfficeStatus(newStatus)
-      } else {
-        setError('Failed to update office status')
-      }
-    } catch (err) {
-      setError('Network error')
-      console.error(err)
-    }
-  }
+        sessionStorage.setItem('officeStatus', newStatus)
+        await refetch()
 
 
 
@@ -150,6 +156,7 @@ export default function StaffDashboard() {
     sessionStorage.removeItem('staffAuth')
     sessionStorage.removeItem('officeId')
     sessionStorage.removeItem('officeName')
+    sessionStorage.removeItem('officeStatus')
     sessionStorage.removeItem('userRole')
     navigate({ to: '/login' })
   }

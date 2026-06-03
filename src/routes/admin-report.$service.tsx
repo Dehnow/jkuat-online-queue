@@ -71,7 +71,11 @@ export default function AdminServiceReportPage() {
         }
 
         const reportJson = await res.json()
-        const allEntries = Array.isArray(reportJson.entries) ? reportJson.entries : []
+        const allEntries = Array.isArray(reportJson)
+          ? reportJson
+          : Array.isArray(reportJson.entries)
+          ? reportJson.entries
+          : []
         
         // Filter entries for this specific service
         const serviceEntries = allEntries.filter(
