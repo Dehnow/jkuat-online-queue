@@ -34,7 +34,7 @@ export default function LoginPage() {
       setOffices(data.offices || [])
     } catch (err) {
       console.error('[Login] fetchOffices', err)
-      setOfficeLoadError('Failed to load operational offices. Please try again.')
+      setOfficeLoadError('Failed to load offices. Please try again.')
     } finally {
       setOfficeLoading(false)
     }
@@ -179,7 +179,7 @@ export default function LoginPage() {
   const handleStaffLogin = async (e: React.FormEvent) => {
     e.preventDefault()
     if (!selectedOffice) {
-      setError('Please choose an operational office first')
+      setError('Please choose an office first')
       return
     }
     setLoading(true)
@@ -276,7 +276,7 @@ export default function LoginPage() {
     gcTime: 5 * 60 * 1000,
   })
 
-  const operationalOffices = offices.filter((office) => office.status === 'open')
+  const allOffices = offices
 
   return (
     <div className="min-h-screen w-full flex font-['Inter',system-ui] bg-gradient-to-br from-gray-50 to-gray-100 relative overflow-hidden">
@@ -423,7 +423,7 @@ export default function LoginPage() {
               <div className="mt-6 space-y-4">
                 <div className="rounded-2xl border border-blue-100 bg-blue-50 p-5">
                   <h2 className="text-xl font-semibold text-blue-700">Staff Office Access</h2>
-                  <p className="text-gray-600 mt-2">Select your operational office and log in with your staff credentials.</p>
+                  <p className="text-gray-600 mt-2">Select your office and log in with your staff credentials.</p>
                 </div>
                 <button
                   type="button"
@@ -472,7 +472,7 @@ export default function LoginPage() {
               <div className="space-y-4">
                 <div className="flex items-center justify-between">
                   <div>
-                    <h3 className="text-xl font-semibold text-gray-900">Operational Offices</h3>
+                    <h3 className="text-xl font-semibold text-gray-900">All Offices</h3>
                     <p className="text-gray-500 text-sm">Pick an open office to proceed.</p>
                   </div>
                   <button onClick={fetchOperativeOffices} className="text-sm font-semibold text-blue-600 hover:text-blue-800">Refresh</button>
@@ -486,20 +486,22 @@ export default function LoginPage() {
                   <div className="rounded-3xl border border-dashed border-blue-200 h-44 flex items-center justify-center">
                     <div className="animate-spin rounded-full h-10 w-10 border-b-2 border-blue-600"></div>
                   </div>
-                ) : operationalOffices.length === 0 ? (
+                ) : allOffices.length === 0 ? (
                   <div className="rounded-3xl border border-dashed border-gray-300 p-8 text-center text-gray-500">
-                    No offices are currently open.
+                    No offices available.
                   </div>
                 ) : (
                   <div className="grid gap-4">
-                    {operationalOffices.map((office) => (
+                    {allOffices.map((office) => (
                       <button key={office.id} type="button" onClick={() => setSelectedOffice(office)} className={`w-full rounded-3xl border p-5 text-left transition ${selectedOffice?.id === office.id ? 'border-blue-500 bg-blue-50' : 'border-gray-200 bg-white hover:border-blue-300 hover:bg-blue-50'}`}>
                         <div className="flex items-center justify-between gap-4">
                           <div>
                             <h4 className="text-lg font-semibold text-gray-900">{office.name}</h4>
                             <p className="text-sm text-gray-500">{office.serviceType}</p>
                           </div>
-                          <span className="px-3 py-1 rounded-full bg-green-100 text-green-700 text-xs uppercase tracking-wide">Open</span>
+                          <span className={`px-3 py-1 rounded-full text-xs uppercase tracking-wide font-medium ${office.status === 'open' ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}>
+                            {office.status === 'open' ? 'Open' : 'Closed'}
+                          </span>
                         </div>
                       </button>
                     ))}
