@@ -77,7 +77,6 @@ export default function AdminPage() {
   const [activeTab, setActiveTab] = useState<'queue' | 'report' | 'offices' | 'feedback'>('queue')
   const [selectedOffice, setSelectedOffice] = useState<'registrar' | 'finance' | 'ict_helpdesk'>('registrar')
   const [serviceQueues, setServiceQueues] = useState<ServiceQueue[]>([])
-  const [currentServing, setCurrentServing] = useState<QueueEntry | null>(null)
   const [waitingList, setWaitingList] = useState<WaitingListEntry[]>([])
   const [reportData, setReportData] = useState<QueueEntry[]>([])
   const [chartData, setChartData] = useState<{ hour: number; count: number }[]>([])
@@ -158,9 +157,7 @@ export default function AdminPage() {
       )
       setServiceQueues(queues)
 
-      // Update current serving for selected office
-      const selectedQueue = queues.find(q => q.serviceId === selectedOffice)
-      setCurrentServing(selectedQueue?.serving || null)
+      // No admin-specific currentServing state required; selected office queue serves directly from selectedQueueObj.
 
       // Build waiting list for selected office (mock but based on real waitingCount)
       const selectedQueueData = queues.find(q => q.serviceId === selectedOffice)
@@ -493,40 +490,7 @@ export default function AdminPage() {
             {/* Two-column grid */}
             <div className="grid grid-cols-1 lg:grid-cols-5 gap-8">
               <div className="lg:col-span-3 space-y-8">
-                {/* Currently Serving Card */}
-                <div className="bg-white/90 backdrop-blur-sm rounded-3xl shadow-md p-6">
-                  <div className="flex items-center justify-between mb-5">
-                    <div className="flex items-center gap-2">
-                      <svg className="w-6 h-6 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M13 10V3L4 14h7v7l9-11h-7z" /></svg>
-                      <h2 className="text-xl font-bold text-gray-800">Currently Serving – {selectedQueueObj?.serviceName}</h2>
-                    </div>
-                    <button
-                      onClick={serveNext}
-                      disabled={actionLoading}
-                      className="bg-gradient-to-r from-green-600 to-green-500 text-white px-5 py-2 rounded-xl font-semibold shadow-md hover:shadow-lg transition disabled:opacity-50 flex items-center gap-2"
-                    >
-                      {actionLoading ? '...' : '▶ Serve Next'}
-                    </button>
-                  </div>
-                  {currentServing ? (
-                    <div className="bg-green-50 rounded-2xl p-6 flex items-center justify-between">
-                      <div className="flex items-center gap-6">
-                        <div className="w-20 h-20 bg-green-100 rounded-full flex items-center justify-center">
-                          {selectedOffice === 'registrar' ? <Building2 className="w-10 h-10 text-green-600" /> : selectedOffice === 'finance' ? <Banknote className="w-10 h-10 text-amber-500" /> : <Headphones className="w-10 h-10 text-blue-600" />}
-                        </div>
-                        <div>
-                          <h3 className="text-2xl font-bold text-green-700">{selectedQueueObj?.serviceName}</h3>
-                          <p className="text-gray-500">Ticket: {getTicketNumber(currentServing)}</p>
-                          <span className="inline-block bg-green-500 text-white text-xs px-2 py-1 rounded-full mt-1">Now Serving</span>
-                          <p className="text-sm text-gray-600 mt-2">Please proceed to the counter</p>
-                        </div>
-                      </div>
-                      <div className="text-8xl font-black bg-gradient-to-r from-green-600 to-green-500 bg-clip-text text-transparent">#{currentServing.queueNumber}</div>
-                    </div>
-                  ) : (
-                    <div className="bg-green-50 rounded-2xl p-10 text-center text-gray-500">No one is currently being served for this office</div>
-                  )}
-                </div>
+                {/* Removed admin currently-serving board; staff shows this board instead. */}
 
                 {/* Waiting Queue Table */}
                 <div className="bg-white/90 backdrop-blur-sm rounded-3xl shadow-md p-6">

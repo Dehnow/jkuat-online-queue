@@ -213,25 +213,41 @@ export default function StaffDashboard() {
         <div className="mb-8">
           {/* Current Service Status */}
           <div className="space-y-6">
-            {/* Currently Serving */}
-            <div className="bg-gradient-to-br from-green-50 to-emerald-50 rounded-3xl shadow-lg p-6 border-2 border-green-200">
-              <div className="flex items-center justify-between mb-4">
-                <div className="flex items-center gap-2">
-                  <div className="w-3 h-3 bg-green-600 rounded-full animate-pulse"></div>
-                  <h3 className="text-lg font-bold text-gray-800">Now Serving</h3>
+            {/* Current Serving Board */}
+            <div className="bg-white/90 backdrop-blur-sm rounded-3xl shadow-lg p-6 border border-green-100">
+              <div className="flex items-center justify-between mb-5">
+                <div className="flex items-center gap-3">
+                  <svg className="w-6 h-6 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M13 10V3L4 14h7v7l9-11h-7z" /></svg>
+                  <div>
+                    <h3 className="text-xl font-bold text-gray-800">Currently Serving</h3>
+                    <p className="text-sm text-gray-500">{officeName}</p>
+                  </div>
                 </div>
-                <div className="text-3xl">{queue.serving?.queueNumber || '—'}</div>
+                <button
+                  onClick={() => performQueueAction('call_next')}
+                  disabled={totalWaiting === 0 || activeWorkflowStep !== 'call_next' || actionLoading}
+                  className="bg-gradient-to-r from-green-600 to-green-500 text-white px-4 py-2 rounded-xl font-semibold shadow-md hover:shadow-lg transition disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  Serve Next
+                </button>
               </div>
               {queue.serving ? (
-                <div className="bg-white/80 rounded-xl p-4 border border-green-100">
-                  <p className="text-sm text-gray-600 mb-1">Customer Name</p>
-                  <p className="font-semibold text-gray-800">{queue.serving.name}</p>
-                  <p className="text-xs text-gray-500 mt-3">ID: {queue.serving.studentId}</p>
+                <div className="bg-green-50 rounded-3xl p-6 flex flex-col lg:flex-row items-center justify-between gap-6">
+                  <div className="flex items-center gap-5">
+                    <div className="w-20 h-20 bg-green-100 rounded-full flex items-center justify-center text-green-600 text-3xl font-black">#{queue.serving.queueNumber}</div>
+                    <div>
+                      <p className="text-xs font-semibold uppercase tracking-wide text-green-700">Now Serving</p>
+                      <h4 className="text-2xl font-bold text-gray-900">{queue.serving.name}</h4>
+                      <p className="text-sm text-gray-600 mt-2">ID: {queue.serving.studentId}</p>
+                    </div>
+                  </div>
+                  <div className="text-right">
+                    <p className="text-sm text-green-700 font-semibold">Please proceed to the counter</p>
+                    <div className="text-6xl font-black text-green-600 mt-3">#{queue.serving.queueNumber}</div>
+                  </div>
                 </div>
               ) : (
-                <div className="bg-white/80 rounded-xl p-4 border border-green-100 text-center">
-                  <p className="text-gray-500 font-medium">Waiting to call next customer...</p>
-                </div>
+                <div className="bg-green-50 rounded-3xl p-10 text-center text-gray-500">No one is currently being served.</div>
               )}
             </div>
 

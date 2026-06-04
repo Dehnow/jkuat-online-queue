@@ -1042,6 +1042,31 @@ app.post('/api/admin/serve', checkAuth, async (req, res) => {
   }
 })
 
+// POST /api/admin/reset - Reset all queues (clears all entries, resets for next day)
+app.post('/api/admin/reset', checkAuth, async (req, res) => {
+  try {
+    if (!db) {
+      console.error('❌ Database not initialized for POST /api/admin/reset')
+      return res.status(503).json({ error: 'Database not ready' })
+    }
+
+    console.log('🔄 Admin: Resetting all queues...')
+
+    // Delete all queue entries (flash all arrays)
+    const deleteResult = await db.delete(queueEntries)
+
+    console.log('✅ All queues reset successfully')
+    res.json({ 
+      message: 'All queues reset successfully',
+      deletedCount: deleteResult.rowCount || 0
+    })
+  } catch (error) {
+    console.error('❌ Error resetting queues:', error.message)
+    console.error('📋 Stack trace:', error.stack)
+    res.status(500).json({ error: 'Internal server error', details: error.message })
+  }
+})
+
 // GET /api/admin/report - Get all served entries
 app.get('/api/admin/report', checkAuth, async (req, res) => {
   try {
