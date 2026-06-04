@@ -36,6 +36,52 @@ const getHourlyServedData = (entries: QueueEntry[]) => {
     .sort((a, b) => a.hour - b.hour)
 }
 
+// Live Queue Dispatch Animation Engine
+const updateQueueDisplay = (newTicketNumber: number, newPhoneName: string, newIdName: string) => {
+  const ticketEl = document.getElementById('ticketNumber')
+  const phoneEl = document.getElementById('customerPhone')
+  const idEl = document.getElementById('customerId')
+  
+  if (!ticketEl || !phoneEl || !idEl) return
+
+  // Exit Phase: Slide left & fade out (150ms)
+  ticketEl.classList.add('animate-queue-exit')
+  phoneEl.classList.add('animate-queue-exit')
+  idEl.classList.add('animate-queue-exit')
+
+  setTimeout(() => {
+    // Replace text values
+    ticketEl.textContent = `#${newTicketNumber}`
+    phoneEl.textContent = newPhoneName
+    idEl.textContent = `ID: ${newIdName}`
+
+    // Clear exit animation classes
+    ticketEl.classList.remove('animate-queue-exit')
+    phoneEl.classList.remove('animate-queue-exit')
+    idEl.classList.remove('animate-queue-exit')
+
+    // Entry Phase: Slide in from right & fade up
+    phoneEl.classList.add('animate-queue-entry')
+    idEl.classList.add('animate-queue-entry')
+
+    // Emphasis Phase: Scale up to 1.15x (catch attention)
+    ticketEl.style.transform = 'scale(1.15)'
+
+    // Settle Phase: Scale back to 1.0 smoothly
+    setTimeout(() => {
+      ticketEl.style.transition = 'transform 300ms cubic-bezier(0.34, 1.56, 0.64, 1)'
+      ticketEl.style.transform = 'scale(1.0)'
+      
+      // Cleanup
+      setTimeout(() => {
+        phoneEl.classList.remove('animate-queue-entry')
+        idEl.classList.remove('animate-queue-entry')
+        ticketEl.style.transition = ''
+      }, 300)
+    }, 100)
+  }, 150)
+}
+
 export default function StaffDashboard() {
   const navigate = useNavigate()
   const [officeId, setOfficeId] = useState<number | null>(null)
@@ -213,39 +259,197 @@ export default function StaffDashboard() {
         <div className="mb-8">
           {/* Current Service Status */}
           <div className="space-y-6">
-            {/* Current Serving Board */}
-            <div className="bg-white/90 backdrop-blur-sm rounded-3xl shadow-lg p-6 border border-green-100">
-              <div className="flex items-start justify-between mb-6">
-                <div className="flex items-center gap-3">
-                  <svg className="w-7 h-7 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M13 10V3L4 14h7v7l9-11h-7z" /></svg>
-                  <div>
-                    <h3 className="text-2xl font-extrabold text-gray-800">Currently Serving</h3>
-                    <p className="text-sm text-gray-500">{officeName}</p>
+            {/* Current Serving Board - Premium Minimalist Design */}
+            {queue.serving ? (
+              <div 
+                id="currentlyServingCard"
+                className="w-full max-w-sm mx-auto bg-white rounded-xl shadow-lg overflow-hidden transition-all duration-300 ease-out hover:shadow-xl hover:-translate-y-1"
+                style={{
+                  maxWidth: '420px',
+                  minHeight: '180px',
+                  boxShadow: '0 10px 30px rgba(0, 0, 0, 0.08)',
+                }}
+              >
+                {/* Header Container: 60px height */}
+                <div 
+                  className="flex items-center justify-between px-6"
+                  style={{ height: '60px' }}
+                >
+                  {/* Left Wing: Golden Icon */}
+                  <div 
+                    className="flex items-center justify-center rounded-full flex-shrink-0"
+                    style={{
+                      width: '40px',
+                      height: '40px',
+                      backgroundColor: '#FDB813',
+                    }}
+                  >
+                    <svg 
+                      className="w-5 h-5"
+                      fill="white" 
+                      stroke="white" 
+                      viewBox="0 0 24 24"
+                    >
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M13 10V3L4 14h7v7l9-11h-7z" />
+                    </svg>
+                  </div>
+
+                  {/* Right Wing: Typography Cluster */}
+                  <div className="flex-1 ml-4">
+                    <h3 
+                      className="font-bold tracking-tight text-gray-900"
+                      style={{
+                        fontSize: '26px',
+                        fontWeight: 700,
+                        fontFamily: "'Inter', 'SF Pro Display', sans-serif",
+                        lineHeight: 1.2,
+                        margin: 0,
+                      }}
+                    >
+                      Currently Serving
+                    </h3>
+                    <p 
+                      className="text-gray-500 mt-0.5"
+                      style={{
+                        fontSize: '14px',
+                        fontWeight: 400,
+                        fontFamily: "'Inter', 'SF Pro Display', sans-serif",
+                        margin: 0,
+                      }}
+                    >
+                      {officeName}
+                    </p>
                   </div>
                 </div>
-                {/* Serve Next control removed per request: staff workflows remain via control panel below */}
+
+                {/* Body Information Panel */}
+                <div 
+                  className="mx-4 mb-4 rounded-lg flex items-center justify-between overflow-hidden"
+                  style={{
+                    height: '90px',
+                    backgroundColor: '#FFF8EA',
+                    padding: '0 20px',
+                  }}
+                >
+                  {/* Block A: Ticket Number with Pulse */}
+                  <div 
+                    id="ticketNumber"
+                    className="animate-pulse-queue"
+                    style={{
+                      fontSize: '56px',
+                      fontWeight: 800,
+                      lineHeight: 1,
+                      color: '#FDB813',
+                      fontFamily: "'Inter', 'SF Pro Display', sans-serif",
+                    }}
+                  >
+                    #{queue.serving.queueNumber}
+                  </div>
+
+                  {/* Block B: Divider */}
+                  <div 
+                    style={{
+                      width: '1px',
+                      height: '55px',
+                      backgroundColor: 'rgba(253, 184, 19, 0.25)',
+                      margin: '0 20px',
+                    }}
+                  />
+
+                  {/* Block C: Customer Info */}
+                  <div 
+                    className="flex flex-col justify-center flex-1"
+                    style={{
+                      minWidth: '140px',
+                    }}
+                  >
+                    <p 
+                      id="customerPhone"
+                      className="animate-queue-entry"
+                      style={{
+                        fontSize: '20px',
+                        fontWeight: 700,
+                        color: '#111827',
+                        fontFamily: "'Inter', 'SF Pro Display', sans-serif",
+                        margin: 0,
+                        lineHeight: 1.3,
+                      }}
+                    >
+                      {queue.serving.name}
+                    </p>
+                    <p 
+                      id="customerId"
+                      className="animate-queue-entry"
+                      style={{
+                        fontSize: '14px',
+                        fontWeight: 400,
+                        color: '#6B7280',
+                        fontFamily: "'Inter', 'SF Pro Display', sans-serif",
+                        margin: '4px 0 0 0',
+                      }}
+                    >
+                      ID: {queue.serving.studentId}
+                    </p>
+                  </div>
+                </div>
               </div>
-
-              {queue.serving ? (
-                <div className="bg-green-50 rounded-3xl p-8 flex flex-col lg:flex-row items-center gap-6">
-                  <div className="flex-1 flex items-center gap-8">
-                    <div className="w-28 h-28 bg-green-100 rounded-full flex items-center justify-center text-green-700 text-3xl font-extrabold">#{queue.serving.queueNumber}</div>
-                    <div className="flex-1">
-                      <p className="text-xs text-green-700 font-semibold tracking-wide">{ /* removed NOW SERVING label */ }</p>
-                      <p className="text-2xl md:text-3xl font-extrabold text-gray-900">{queue.serving.name}</p>
-                      <p className="text-sm text-gray-500 mt-2">ID: {queue.serving.studentId}</p>
-                    </div>
-                  </div>
-
-                  <div className="flex-1 flex flex-col items-center justify-center">
-                    <div className="text-xs text-gray-400 uppercase tracking-wider mb-2">{ /* removed 'Please proceed...' */ }</div>
-                    <div className="text-7xl font-black text-green-600">#{queue.serving.queueNumber}</div>
-                  </div>
-                </div>
-              ) : (
-                <div className="bg-green-50 rounded-3xl p-10 text-center text-gray-500">Waiting to call next customer...</div>
-              )}
-            </div>
+            ) : (
+              <div 
+                className="w-full max-w-sm mx-auto bg-white rounded-xl shadow-lg p-6 text-center"
+                style={{
+                  maxWidth: '420px',
+                  minHeight: '180px',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                }}
+              >
+                <p className="text-gray-400 text-base">No one is currently being served.</p>
+              </div>
+            )}
+            
+            {/* Animation Styles */}
+            <style>{`
+              @keyframes pulse-queue {
+                0%, 100% { transform: scale(1); }
+                50% { transform: scale(1.05); }
+              }
+              
+              .animate-pulse-queue {
+                animation: pulse-queue 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+              }
+              
+              @keyframes queue-enter {
+                from {
+                  opacity: 0;
+                  transform: translateX(20px);
+                }
+                to {
+                  opacity: 1;
+                  transform: translateX(0);
+                }
+              }
+              
+              .animate-queue-entry {
+                animation: queue-enter 0.5s ease-out;
+              }
+              
+              @keyframes queue-exit {
+                from {
+                  opacity: 1;
+                  transform: translateX(0);
+                }
+                to {
+                  opacity: 0;
+                  transform: translateX(-20px);
+                }
+              }
+              
+              .animate-queue-exit {
+                animation: queue-exit 0.15s ease-in forwards;
+              }
+            `}</style>
+            
 
             {/* Waiting Queue List */}
             <div className="bg-white rounded-3xl shadow-lg p-6 border border-gray-100">
