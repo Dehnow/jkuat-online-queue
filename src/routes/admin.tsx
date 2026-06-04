@@ -3,7 +3,6 @@ import { useState, useEffect, useCallback } from 'react'
 import { Building2, Banknote, Headphones, Download, ChevronDown } from 'lucide-react'
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts'
 import OfficeManagement from '../components/OfficeManagement'
-import FeedbackSystem from '../components/FeedbackSystem'
 import ServiceLogFilterBar from '../components/ServiceLogFilterBar'
 type QueueEntry = {
   id: number
@@ -135,7 +134,7 @@ export default function AdminPage() {
   const navigate = useNavigate()
   const [loggedIn, setLoggedIn] = useState(false)
   const [auth, setAuth] = useState('')
-  const [activeTab, setActiveTab] = useState<'queue' | 'report' | 'offices' | 'feedback'>('queue')
+  const [activeTab, setActiveTab] = useState<'queue' | 'report' | 'offices'>('queue')
   const [selectedOffice, setSelectedOffice] = useState<'registrar' | 'finance' | 'ict_helpdesk'>('registrar')
   const [serviceQueues, setServiceQueues] = useState<ServiceQueue[]>([])
   const [waitingList, setWaitingList] = useState<WaitingListEntry[]>([])
@@ -455,13 +454,6 @@ export default function AdminPage() {
           >
             <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" /></svg>
             Offices
-          </button>
-          <button
-            onClick={() => setActiveTab('feedback')}
-            className={`flex items-center gap-2 text-lg font-semibold pb-2 transition-all whitespace-nowrap ${activeTab === 'feedback' ? 'text-purple-600 border-b-2 border-purple-600' : 'text-gray-500'}`}
-          >
-            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M8 10h.01M12 10h.01M16 10h.01M9 16H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-5l-5 5v-5z" /></svg>
-            Feedback
           </button>
         </div>
 
@@ -795,10 +787,6 @@ export default function AdminPage() {
             }}
             adminAuth={auth}
           />
-        )}
-
-        {activeTab === 'feedback' && loggedIn && auth && (
-          <FeedbackSystem adminAuth={auth} offices={offices} />
         )}
       </main>
     </div>
