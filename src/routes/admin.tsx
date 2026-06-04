@@ -4,6 +4,7 @@ import { Building2, Banknote, Headphones, Download, ChevronDown } from 'lucide-r
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts'
 import OfficeManagement from '../components/OfficeManagement'
 import FeedbackSystem from '../components/FeedbackSystem'
+import ServiceLogFilterBar from '../components/ServiceLogFilterBar'
 type QueueEntry = {
   id: number
   name: string
@@ -144,6 +145,13 @@ export default function AdminPage() {
   const [currentDateTime, setCurrentDateTime] = useState(new Date())
   const [offices, setOffices] = useState<any[]>([])
   const [exportMenuOpen, setExportMenuOpen] = useState(false)
+  const [reportTotal, setReportTotal] = useState(0)
+  const [reportFilters, setReportFilters] = useState({
+    serviceType: 'all',
+    status: 'served',
+    days: 0,
+    search: ''
+  })
 
   // Auth check
   useEffect(() => {
@@ -237,14 +245,22 @@ export default function AdminPage() {
       }
       setWaitingList(waitingEntries)
 
-      // Fetch report (served entries) for graph
+      // Fetch report (served entries) for graph - with filter parameters
       try {
-        const reportRes = await fetch('/api/admin/report', { headers: { Authorization: `Basic ${auth}` } })
+        const params = new URLSearchParams()
+        if (reportFilters.serviceType !== 'all') params.append('serviceType', reportFilters.serviceType)
+        if (reportFilters.status) params.append('status', reportFilters.status)
+        if (reportFilters.days > 0) params.append('days', reportFilters.days.toString())
+        if (reportFilters.search) params.append('search', reportFilters.search)
+
+        const reportUrl = `/api/admin/report${params.toString() ? '?' + params.toString() : ''}`
+        const reportRes = await fetch(reportUrl, { headers: { Authorization: `Basic ${auth}` } })
         if (!reportRes.ok) throw new Error(`Report fetch failed: ${reportRes.status}`)
         const reportJson = await reportRes.json()
-        const servedEntries = Array.isArray(reportJson.entries) ? reportJson.entries : []
+        const servedEntries = Array.isArray(reportJson.entries) ? reportJson.entries : reportJson
         console.log(`[Admin] Served entries count: ${servedEntries.length}`)
         setReportData(servedEntries)
+        setReportTotal(reportJson.total || servedEntries.length)
         setChartData(getHourlyServed(servedEntries))
       } catch (err) {
         console.error('[Admin] Error fetching report:', err)
@@ -253,7 +269,7 @@ export default function AdminPage() {
     } catch (err) {
       console.error('[Admin] fetchAllData error:', err)
     }
-  }, [auth, selectedOffice])
+  }, [auth, selectedOffice, reportFilters])
 
   useEffect(() => {
     if (loggedIn) {
@@ -273,6 +289,20 @@ export default function AdminPage() {
     } catch (e) {}
     return () => {
       try { window.removeEventListener('ticketCreated', handler as EventListener) } catch (e) {}
+    }
+  }, [loggedIn, fetchAllData])
+
+  // Listen for service log updates from staff dashboard
+  useEffect(() => {
+    const handler = () => {
+      console.log('[Admin] Service log updated event received, refreshing data...')
+      if (loggedIn) fetchAllData()
+    }
+    try {
+      window.addEventListener('serviceLogUpdated', handler as EventListener)
+    } catch (e) {}
+    return () => {
+      try { window.removeEventListener('serviceLogUpdated', handler as EventListener) } catch (e) {}
     }
   }, [loggedIn, fetchAllData])
 
@@ -669,6 +699,12 @@ export default function AdminPage() {
 
         {activeTab === 'report' && (
           <div className="space-y-8">
+            <ServiceLogFilterBar
+              filters={reportFilters}
+              onFiltersChange={setReportFilters}
+              totalCount={reportTotal}
+            />
+
             <div className="bg-white/90 backdrop-blur-sm rounded-3xl shadow-md p-6">
               <div className="flex items-center justify-between mb-6">
                 <div>

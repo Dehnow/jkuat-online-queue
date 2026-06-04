@@ -1067,13 +1067,60 @@ app.post('/api/admin/reset', checkAuth, async (req, res) => {
   }
 })
 
-// GET /api/admin/report - Get all served entries
+// GET /api/admin/report - Get all served entries with optional filtering
 app.get('/api/admin/report', checkAuth, async (req, res) => {
   try {
     if (!db) {
       return res.status(503).json({ error: 'Database not ready' })
     }
 
+    const { serviceType, status = 'served', days, search, limit = 100, offset = 0 } = req.query
+
+    // Build WHERE conditions
+    let conditions = []
+
+    // Handle status filter (can be 'served', 'cancelled', or 'both')
+    if (status === 'both') {
+      conditions.push(
+        or(
+          eq(queueEntries.status, 'served'),
+          eq(queueEntries.status, 'cancelled')
+        )
+      )
+    } else {
+      conditions.push(eq(queueEntries.status, status || 'served'))
+    }
+
+    if (serviceType && serviceType !== 'all') {
+      conditions.push(eq(queueEntries.serviceType, serviceType))
+    }
+
+    if (days) {
+      const numDays = parseInt(days, 10)
+      if (!Number.isNaN(numDays) && numDays > 0) {
+        const daysAgo = new Date(Date.now() - numDays * 24 * 60 * 60 * 1000)
+        conditions.push(sql`${queueEntries.servedAt} >= ${daysAgo}`)
+      }
+    }
+
+    if (search) {
+      conditions.push(
+        or(
+          sql`${queueEntries.name} ILIKE ${'%' + search + '%'}`,
+          sql`${queueEntries.studentId} ILIKE ${'%' + search + '%'}`
+        )
+      )
+    }
+
+    // Fetch total count for pagination
+    const countResult = await db
+      .select({ count: dbCount() })
+      .from(queueEntries)
+      .where(and(...conditions))
+
+    const total = countResult[0]?.count || 0
+
+    // Fetch paginated results
     const served = await db
       .select({
         id: queueEntries.id,
@@ -1086,10 +1133,18 @@ app.get('/api/admin/report', checkAuth, async (req, res) => {
         servedAt: queueEntries.servedAt,
       })
       .from(queueEntries)
-      .where(eq(queueEntries.status, 'served'))
+      .where(and(...conditions))
       .orderBy(desc(queueEntries.servedAt))
+      .limit(parseInt(limit, 10) || 100)
+      .offset(parseInt(offset, 10) || 0)
 
-    res.json(served)
+    res.json({
+      entries: served,
+      total,
+      page: Math.floor(parseInt(offset, 10) / parseInt(limit, 10)) + 1 || 1,
+      limit: parseInt(limit, 10) || 100,
+      timestamp: new Date().toISOString()
+    })
   } catch (error) {
     console.error('Error fetching report:', error)
     res.status(500).json({ error: 'Internal server error' })

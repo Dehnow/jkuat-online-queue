@@ -155,6 +155,16 @@ export default function StaffDashboard() {
           setActiveWorkflowStep('call_next')
         }
         await refetch()
+
+        // Dispatch event to notify admin dashboard of service log update
+        if (action === 'end_service' || action === 'cancel') {
+          try {
+            window.dispatchEvent(new Event('serviceLogUpdated'))
+            console.log('[Staff] Service log updated event dispatched')
+          } catch (e) {
+            console.warn('[Staff] Failed to dispatch serviceLogUpdated event', e)
+          }
+        }
       } else {
         setError(result.error || 'Action failed')
       }
