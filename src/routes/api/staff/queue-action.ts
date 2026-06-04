@@ -46,13 +46,13 @@ export async function POST(request: Request) {
         }
 
         if (nextEntry) {
-          // Update to serving and set calledNextAt timestamp
+          // Update to serving
           await db.update(queueEntries)
-            .set({ status: 'serving', calledNextAt: new Date() })
+            .set({ status: 'serving' })
             .where(eq(queueEntries.id, nextEntry.id))
 
-          const ticketLabel = nextEntry.isGolden && nextEntry.mpesaStatus === 'success'
-            ? `${nextEntry.queueNumber} ✨ (GOLDEN TICKET)`
+          const ticketLabel = nextEntry.isGolden && nextEntry.mpesaStatus === 'success' 
+            ? `${nextEntry.queueNumber} ✨ (GOLDEN TICKET)` 
             : nextEntry.queueNumber.toString()
 
           return json({
@@ -74,9 +74,9 @@ export async function POST(request: Request) {
       }
 
       case 'start_service': {
-        // Update status to serving and clear calledNextAt
+        // Update status to serving
         await db.update(queueEntries)
-          .set({ status: 'serving', calledNextAt: null })
+          .set({ status: 'serving' })
           .where(eq(queueEntries.id, queueId))
 
         return json({

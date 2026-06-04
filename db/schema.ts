@@ -24,8 +24,6 @@ export const queueEntries = pgTable("queue_entries", {
   mpesaTransactionId: text("mpesa_transaction_id"),
   mpesaStatus: mpesaStatusEnum("mpesa_status"),
   mpesaPaidAt: timestamp("mpesa_paid_at"),
-  // Called next notification
-  calledNextAt: timestamp("called_next_at"),
 });
 
 export const offices = pgTable("offices", {
