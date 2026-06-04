@@ -1029,87 +1029,185 @@ function StudentDashboard() {
         </div>
       )}
 
-      {/* Golden Ticket M-Pesa Payment Modal */}
+      {/* Golden Ticket M-Pesa Payment Modal - Production UI */}
       {showGoldenModal && (
-        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4 animate-in fade-in duration-300" onClick={() => setShowGoldenModal(false)}>
-          <div className="bg-gradient-to-br from-white to-gray-50 rounded-3xl shadow-2xl max-w-md w-full overflow-hidden animate-cinematic-zoom" onClick={e => e.stopPropagation()}>
-            {/* Header */}
-            <div className="relative bg-gradient-to-r from-yellow-400 to-amber-500 p-6 text-white text-center font-['Poppins',system-ui]">
-              <div className="text-4xl mb-2">⭐</div>
-              <h2 className="text-3xl font-black tracking-wider" style={{letterSpacing: '0.05em', textShadow: '2px 2px 4px rgba(0,0,0,0.2)'}}>Golden Ticket</h2>
-              <p className="text-yellow-50 text-sm mt-1 font-semibold">Priority Queue Service</p>
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4" onClick={() => setShowGoldenModal(false)}>
+          <div 
+            className="bg-white rounded-2xl overflow-hidden transition-all duration-300"
+            style={{
+              width: '440px',
+              maxWidth: 'calc(100% - 32px)',
+              boxShadow: '0 12px 40px rgba(0,0,0,0.08)',
+              animation: 'modal-slide-up 300ms cubic-bezier(0.34, 1.56, 0.64, 1)',
+            }}
+            onClick={e => e.stopPropagation()}
+          >
+            <style>{`
+              @keyframes modal-slide-up { from { transform: translateY(20px); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
+              @keyframes spin-gold { 100% { transform: rotate(360deg); } }
+              @keyframes pulse-sparkle { 0%, 100% { opacity: 0.4; } 50% { opacity: 1; } }
+              @keyframes scale-in-bounce { 0% { transform: scale(0.6); opacity: 0; } 100% { transform: scale(1); opacity: 1; } }
+              .spin-gold { animation: spin-gold 3s linear infinite; }
+              .pulse-sparkle { animation: pulse-sparkle 1.5s ease-in-out infinite; }
+              .scale-in-bounce { animation: scale-in-bounce 400ms cubic-bezier(0.34, 1.56, 0.64, 1); }
+            `}</style>
+
+            {/* ===== HEADER BLOCK ===== */}
+            <div className="bg-gradient-to-r from-yellow-400 to-yellow-500 px-6 py-8 text-center relative overflow-hidden">
+              {/* Sparkles */}
+              <div className="absolute inset-0 pointer-events-none">
+                <div className="absolute top-4 left-6 w-1.5 h-1.5 bg-yellow-300 rounded-full pulse-sparkle" style={{animationDelay: '0s'}}></div>
+                <div className="absolute top-5 right-8 w-1 h-1 bg-yellow-200 rounded-full pulse-sparkle" style={{animationDelay: '0.3s'}}></div>
+                <div className="absolute bottom-6 left-10 w-1 h-1 bg-yellow-300 rounded-full pulse-sparkle" style={{animationDelay: '0.6s'}}></div>
+                <div className="absolute bottom-5 right-6 w-1.5 h-1.5 bg-yellow-200 rounded-full pulse-sparkle" style={{animationDelay: '0.9s'}}></div>
+              </div>
+
+              {/* Icon */}
+              <div 
+                className="w-10 h-10 mx-auto mb-3 flex items-center justify-center"
+                style={{backgroundColor: '#FDB813', borderRadius: '4px'}}
+              >
+                <svg width="24" height="24" viewBox="0 0 24 24" fill="white">
+                  <path d="M12 2L15.09 8.26H21.77L16.84 12.45L18.93 18.71L12 14.52L5.07 18.71L7.16 12.45L2.23 8.26H8.91L12 2Z"/>
+                </svg>
+              </div>
+
+              <h2 className="text-2xl font-black text-gray-900 tracking-wider" style={{fontFamily: "'Inter', sans-serif", letterSpacing: '0.5px'}}>
+                GOLDEN TICKET
+              </h2>
+              <p className="text-sm font-medium text-gray-700 mt-1">Priority Queue Service</p>
             </div>
 
-            {/* Content */}
-            <div className="p-6 space-y-4">
-              {/* Success State */}
+            {/* ===== CONTENT AREA ===== */}
+            <div className="px-6 py-6">
+              {/* SUCCESS STATE */}
               {goldenSuccess && mpesaStatus === 'success' && (
                 <div className="text-center space-y-4">
-                  <div className="text-5xl animate-bounce">✅</div>
+                  <div 
+                    className="w-16 h-16 mx-auto bg-green-100 rounded-full flex items-center justify-center scale-in-bounce"
+                    style={{boxShadow: '0 4px 15px rgba(0,0,0,0.05)'}}
+                  >
+                    <svg className="w-8 h-8 text-green-600" fill="currentColor" viewBox="0 0 20 20">
+                      <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
+                    </svg>
+                  </div>
                   <div>
-                    <h3 className="text-lg font-bold text-gray-800">Payment Successful!</h3>
+                    <h3 className="text-xl font-bold text-gray-900">Payment Successful!</h3>
                     <p className="text-sm text-gray-600 mt-2">Your queue entry has been upgraded to Golden status. You'll be served before regular queue entries.</p>
                   </div>
                   <button
                     onClick={() => setShowGoldenModal(false)}
-                    className="w-full bg-gradient-to-r from-green-600 to-green-500 text-white py-3 rounded-lg font-bold shadow-md hover:shadow-lg transition"
+                    className="w-full h-14 bg-gradient-to-r from-green-600 to-green-500 text-white font-bold rounded-2xl shadow-md hover:shadow-lg transition-all duration-300 hover:-translate-y-0.5"
                   >
                     Great! Close
                   </button>
                 </div>
               )}
 
-              {/* Error State */}
+              {/* ERROR/FAILED STATE */}
               {goldenError && !goldenSuccess && (
-                <div className="space-y-3">
-                  <div className="text-center">
-                    <div className="text-4xl mb-2">❌</div>
-                    <h3 className="text-lg font-bold text-red-600">Payment Failed</h3>
+                <div className="text-center space-y-4">
+                  <div 
+                    className="w-16 h-16 mx-auto bg-white rounded-full flex items-center justify-center border border-red-100 scale-in-bounce"
+                    style={{boxShadow: '0 4px 15px rgba(0,0,0,0.05)'}}
+                  >
+                    <svg className="w-8 h-8 text-red-500" fill="currentColor" viewBox="0 0 20 20">
+                      <path fillRule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clipRule="evenodd" />
+                    </svg>
                   </div>
-                  <div className="bg-red-50 border border-red-200 rounded-lg p-3 text-sm text-red-700">
-                    <p className="font-semibold mb-1">Error:</p>
-                    <p>{goldenError}</p>
+                  <div>
+                    <h3 className="text-xl font-bold text-gray-900">Payment Failed</h3>
+                    <p className="text-sm text-gray-600 mt-1">Oops! Something went wrong.</p>
+                  </div>
+                  <div 
+                    className="p-4 rounded-2xl text-center"
+                    style={{backgroundColor: '#FFF5F5', border: '1px solid #FEE2E2'}}
+                  >
+                    <p className="text-sm font-medium text-red-500">Payment failed. Please try again.</p>
                   </div>
                   <button
                     onClick={() => {
                       setGoldenError('')
                       setMpesaStatus(null)
                     }}
-                    className="w-full bg-gradient-to-r from-amber-500 to-amber-600 text-white py-3 rounded-lg font-bold shadow-md hover:shadow-lg transition"
+                    className="w-full h-14 bg-gradient-to-r from-red-500 to-red-600 text-white font-bold rounded-2xl shadow-md hover:shadow-lg transition-all duration-300 hover:-translate-y-0.5 flex items-center justify-center gap-2"
                   >
                     Try Again
+                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M13 7l5 5m0 0l-5 5m5-5H6" />
+                    </svg>
                   </button>
                 </div>
               )}
 
-              {/* Loading State */}
+              {/* LOADING/WAITING STATE */}
               {goldenLoading && mpesaStatus === 'pending' && !goldenError && (
-                <div className="text-center space-y-4">
-                  <div className="flex justify-center">
-                    <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-yellow-400"></div>
+                <div className="space-y-5">
+                  {/* Spinner */}
+                  <div className="flex justify-center pt-4">
+                    <div 
+                      className="w-12 h-12 border-2 border-gray-200 rounded-full spin-gold"
+                      style={{borderTopColor: '#FDB813'}}
+                    ></div>
                   </div>
-                  <div>
-                    <h3 className="text-lg font-bold text-gray-800">⏳ Waiting for M-Pesa Confirmation...</h3>
-                    <p className="text-sm text-gray-600 mt-2">Do not close this dialog. The system is waiting for payment confirmation from Safaricom.</p>
-                    <div className="mt-4 bg-blue-50 border border-blue-200 rounded-lg p-4 text-xs text-blue-700 space-y-2">
-                      <p><strong>📱 What to expect:</strong></p>
-                      <ol className="ml-4 space-y-1 text-left">
-                        <li>1️⃣ M-Pesa prompt appears on your phone within seconds</li>
-                        <li>2️⃣ Enter your M-Pesa PIN to authorize payment</li>
-                        <li>3️⃣ You receive M-Pesa confirmation message (KES 200 deducted)</li>
-                        <li>4️⃣ This dialog updates to show ✅ Payment Successful!</li>
-                      </ol>
-                      <hr className="my-2" />
-                      <p className="font-semibold">⏱️ Timeout: 12.50 seconds. If prompt doesn't appear:</p>
-                      <ul className="ml-4 space-y-1 text-left">
-                        <li>✓ Verify your phone number is correct (254XXXXXXXXX)</li>
-                        <li>✓ Ensure your M-Pesa account has sufficient balance</li>
-                        <li>✓ Check you have mobile signal/internet</li>
-                        <li>✓ Restart M-Pesa app and try again</li>
-                      </ul>
+
+                  {/* Message */}
+                  <div className="text-center">
+                    <h3 className="text-lg font-bold text-gray-900">Waiting for M-Pesa Confirmation...</h3>
+                    <p className="text-sm text-gray-600 mt-2 leading-relaxed">Do not close this dialog. The system is waiting for payment confirmation from Safaricom.</p>
+                  </div>
+
+                  {/* What to Expect Card */}
+                  <div 
+                    className="p-4 rounded-2xl space-y-3"
+                    style={{backgroundColor: '#F4FBF7'}}
+                  >
+                    <p className="text-xs font-bold text-gray-700 uppercase tracking-wide">What to expect</p>
+                    <div className="space-y-2">
+                      {[
+                        'M-Pesa prompt appears on your phone',
+                        'Enter your M-Pesa PIN to authorize payment',
+                        'You receive M-Pesa confirmation message (KES 200 deducted)',
+                        'This dialog updates automatically'
+                      ].map((step, idx) => (
+                        <div key={idx} className="flex items-start gap-3">
+                          <div 
+                            className="w-5 h-5 rounded-full flex items-center justify-center flex-shrink-0 mt-0.5"
+                            style={{backgroundColor: '#DEF7EC'}}
+                          >
+                            <span className="text-xs font-bold" style={{color: '#03543F'}}>{idx + 1}</span>
+                          </div>
+                          <p className="text-sm text-gray-800 font-medium">{step}</p>
+                        </div>
+                      ))}
                     </div>
                   </div>
-                  <div className="flex gap-2 mt-4">
+
+                  {/* Timeout Help Card */}
+                  <div 
+                    className="p-3 rounded-2xl border"
+                    style={{backgroundColor: '#F9FAFB', borderColor: '#F3F4F6'}}
+                  >
+                    <p className="text-xs font-bold text-gray-700 uppercase tracking-wide mb-2">Timeout: 12.50 seconds. If prompt doesn't appear:</p>
+                    <div className="space-y-1.5">
+                      {[
+                        'Verify your phone number is correct.',
+                        'Ensure your account has sufficient balance.',
+                        'Check mobile signal.',
+                        'Restart M-Pesa app if needed.'
+                      ].map((tip, idx) => (
+                        <div key={idx} className="flex items-center gap-2">
+                          <svg className="w-3.5 h-3.5 text-green-600 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
+                            <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
+                          </svg>
+                          <p className="text-xs text-gray-700">{tip}</p>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* Dev Buttons */}
+                  <div className="flex gap-3 pt-2">
                     <button
                       type="button"
                       onClick={async () => {
@@ -1118,8 +1216,6 @@ function StudentDashboard() {
                             setGoldenError('❌ No active transaction found. Please initiate payment first.')
                             return
                           }
-
-                          // Send failure callback payload directly to backend
                           const res = await fetch('/api/queue/mpesa-callback', {
                             method: 'POST',
                             headers: { 'Content-Type': 'application/json' },
@@ -1141,27 +1237,18 @@ function StudentDashboard() {
                               }
                             })
                           })
-
                           if (pollInterval) {
                             clearInterval(pollInterval)
                             setPollInterval(null)
                           }
-
                           setGoldenLoading(false)
                           setMpesaStatus('failed')
-                          setGoldenError('❌ Payment Failed. Please enter your M-Pesa number and try again.')
+                          setGoldenError('❌ Payment Failed. Please try again.')
                         } catch (err) {
-                          console.error('Error simulating failed payment:', err)
-                          if (pollInterval) {
-                            clearInterval(pollInterval)
-                            setPollInterval(null)
-                          }
-                          setGoldenLoading(false)
-                          setMpesaStatus('failed')
-                          setGoldenError('❌ Payment Failed. Please enter your M-Pesa number and try again.')
+                          console.error('Error:', err)
                         }
                       }}
-                      className="flex-1 bg-red-500 hover:bg-red-600 text-white py-2 rounded-lg font-semibold transition"
+                      className="flex-1 h-12 bg-white border border-red-200 text-red-500 font-bold rounded-2xl hover:bg-red-50 transition-all duration-300"
                     >
                       Fail
                     </button>
@@ -1173,8 +1260,6 @@ function StudentDashboard() {
                             setGoldenError('❌ No active transaction found. Please initiate payment first.')
                             return
                           }
-
-                          // Send success callback payload directly to backend
                           const res = await fetch('/api/queue/mpesa-callback', {
                             method: 'POST',
                             headers: { 'Content-Type': 'application/json' },
@@ -1198,22 +1283,17 @@ function StudentDashboard() {
                               }
                             })
                           })
-
                           if (!res.ok) {
                             setGoldenError('❌ Failed to process payment callback')
                             return
                           }
-
                           if (pollInterval) {
                             clearInterval(pollInterval)
                             setPollInterval(null)
                           }
-
                           setMpesaStatus('success')
                           setGoldenSuccess(true)
                           setGoldenLoading(false)
-
-                          // Update local ticket history
                           const studentId = studentIdHeader || sessionStorage.getItem('studentId') || ''
                           if (studentId) {
                             const historyKey = `ticketHistory_${studentId}`
@@ -1233,19 +1313,16 @@ function StudentDashboard() {
                             localStorage.setItem(historyKey, JSON.stringify(updatedHistory))
                             setTicketHistory(dedupeStoredTickets(updatedHistory))
                           }
-
                           setTimeout(() => {
                             setShowGoldenModal(false)
                             queryClient.invalidateQueries({ queryKey: ['service-stats'] })
                             queryClient.invalidateQueries({ queryKey: ['ticket-history', studentIdHeader] })
                           }, 3000)
                         } catch (err) {
-                          console.error('Error processing success:', err)
-                          setGoldenError('❌ Error processing success. Please try again.')
-                          setGoldenLoading(false)
+                          console.error('Error:', err)
                         }
                       }}
-                      className="flex-1 bg-green-500 hover:bg-green-600 text-white py-2 rounded-lg font-semibold transition"
+                      className="flex-1 h-12 bg-gradient-to-r from-green-600 to-green-500 text-white font-bold rounded-2xl hover:shadow-lg transition-all duration-300"
                     >
                       Successful
                     </button>
@@ -1253,55 +1330,81 @@ function StudentDashboard() {
                 </div>
               )}
 
-              {/* Form State (Initial) */}
+              {/* INITIAL FORM STATE */}
               {!goldenLoading && !goldenError && !goldenSuccess && (
                 <form
                   onSubmit={e => {
                     e.preventDefault()
                     handleGoldenPayment()
                   }}
-                  className="space-y-4"
+                  className="space-y-5"
                 >
-                  {/* Info Card */}
-                  <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-3">
-                    <p className="text-sm text-yellow-800">
-                      <strong>✨ Benefits:</strong><br/>
-                      • Jump to the front of the queue<br/>
-                      • Get served before regular tickets<br/>
-                      • Cost: <span className="font-bold">KES 200</span>
-                    </p>
+                  {/* Benefits Card */}
+                  <div 
+                    className="p-4 rounded-2xl space-y-2"
+                    style={{backgroundColor: '#FFFBF2'}}
+                  >
+                    <div className="flex items-center gap-2">
+                      <svg className="w-4 h-4" fill="#FDB813" viewBox="0 0 20 20">
+                        <path d="M10 15l-5.878 3.09 1.123-6.545L.489 6.91l6.572-.955L10 0l2.939 5.955 6.572.955-4.756 4.635 1.123 6.545z" />
+                      </svg>
+                      <p className="font-bold text-sm text-gray-900">Benefits:</p>
+                    </div>
+                    <div className="space-y-1.5 text-sm text-gray-700">
+                      <div className="flex items-center gap-2">
+                        <span className="text-green-600">✓</span>
+                        <span>Jump to the front of the queue</span>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <span className="text-green-600">✓</span>
+                        <span>Get served before regular tickets</span>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <span className="text-green-600">✓</span>
+                        <span>Cost: <span className="font-bold">KES 200</span></span>
+                      </div>
+                    </div>
                   </div>
 
                   {/* Phone Input */}
                   <div>
-                    <label className="block text-xs font-semibold text-gray-600 mb-2">M-Pesa Phone Number</label>
-                    <input
-                      type="tel"
-                      placeholder="+254712345678"
-                      value={goldenPhone}
-                      onChange={e => {
-                        setGoldenPhone(e.target.value)
-                        setGoldenError('')
-                      }}
-                      disabled={goldenLoading}
-                      className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-yellow-400 focus:border-transparent disabled:bg-gray-100"
-                    />
-                    <p className="text-xs text-gray-500 mt-1">Format: +254712345678</p>
+                    <label className="block text-xs font-bold text-gray-700 uppercase tracking-wide mb-2">M-Pesa Phone Number</label>
+                    <div className="relative">
+                      <svg className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" fill="currentColor" viewBox="0 0 20 20">
+                        <path d="M5 1a2 2 0 012-2h6a2 2 0 012 2v14a2 2 0 01-2 2H7a2 2 0 01-2-2V1zm6 18h4a2 2 0 002-2v-2h2a2 2 0 012 2v-2a6 6 0 00-6-6H9.5a3.5 3.5 0 00-3.5 3.5V17a2 2 0 002 2z" />
+                      </svg>
+                      <input
+                        type="tel"
+                        placeholder="+2547XXXXXXXX"
+                        value={goldenPhone}
+                        onChange={e => {
+                          setGoldenPhone(e.target.value)
+                          setGoldenError('')
+                        }}
+                        disabled={goldenLoading}
+                        className="w-full h-14 pl-11 pr-4 border border-gray-200 rounded-2xl text-base focus:outline-none focus:border-yellow-500 focus:shadow-lg transition-all"
+                        style={{boxShadow: 'inset 0 1px 2px rgba(0,0,0,0.02)'}}
+                      />
+                    </div>
+                    <p className="text-xs text-gray-500 mt-2">Format: +254712345678</p>
                   </div>
 
                   {/* Error Alert */}
                   {goldenError && (
-                    <div className="bg-red-50 border border-red-200 rounded-lg p-3 text-sm text-red-700">
+                    <div 
+                      className="p-3 rounded-2xl text-sm text-red-700"
+                      style={{backgroundColor: '#FFF5F5', borderLeft: '3px solid #EF4444'}}
+                    >
                       {goldenError}
                     </div>
                   )}
 
                   {/* Buttons */}
-                  <div className="space-y-2">
+                  <div className="space-y-3 pt-2">
                     <button
                       type="submit"
                       disabled={goldenLoading}
-                      className="w-full bg-gradient-to-r from-yellow-400 to-amber-500 hover:from-yellow-500 hover:to-amber-600 text-white py-3 rounded-lg font-bold shadow-md hover:shadow-lg transition disabled:opacity-50 disabled:cursor-not-allowed"
+                      className="w-full h-14 bg-gradient-to-r from-yellow-400 to-yellow-500 text-white font-bold rounded-2xl shadow-md hover:shadow-lg transition-all duration-300 hover:-translate-y-0.5 disabled:opacity-50 disabled:cursor-not-allowed"
                     >
                       {goldenLoading ? 'Processing...' : 'Pay KES 200 with M-Pesa'}
                     </button>
@@ -1309,14 +1412,19 @@ function StudentDashboard() {
                       type="button"
                       onClick={() => setShowGoldenModal(false)}
                       disabled={goldenLoading}
-                      className="w-full border-2 border-gray-300 text-gray-700 py-2 rounded-lg font-semibold hover:bg-gray-100 transition disabled:opacity-50 disabled:cursor-not-allowed"
+                      className="w-full h-12 bg-white border border-gray-200 text-gray-700 font-semibold rounded-2xl hover:bg-gray-50 transition-all duration-300 disabled:opacity-50 disabled:cursor-not-allowed"
                     >
                       Cancel
                     </button>
                   </div>
 
-                  {/* Footer */}
-                  <p className="text-xs text-center text-gray-500">💳 Secure M-Pesa payment via Safaricom</p>
+                  {/* Security Footer */}
+                  <div className="flex items-center justify-center gap-2 pt-2">
+                    <svg className="w-4 h-4 text-gray-400" fill="currentColor" viewBox="0 0 20 20">
+                      <path fillRule="evenodd" d="M5 9V7a5 5 0 0110 0v2a2 2 0 012 2v5a2 2 0 01-2 2H5a2 2 0 01-2-2v-5a2 2 0 012-2zm8-2v2H7V7a3 3 0 016 0z" clipRule="evenodd" />
+                    </svg>
+                    <p className="text-xs text-gray-500">Secure M-Pesa payment via Safaricom</p>
+                  </div>
                 </form>
               )}
             </div>
