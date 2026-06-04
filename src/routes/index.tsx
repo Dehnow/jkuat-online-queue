@@ -323,6 +323,24 @@ function StudentDashboard() {
 
   const combinedHistory = mergeTicketHistory(ticketHistory, dbHistoryData.tickets || [])
 
+  // Update lastTicket with latest server data to show notifications
+  useEffect(() => {
+    if (combinedHistory.length > 0) {
+      const mostRecentTicket = combinedHistory[0]
+      setLastTicket({
+        id: mostRecentTicket.id,
+        name: mostRecentTicket.id.toString(),
+        studentId: mostRecentTicket.id.toString(),
+        serviceType: mostRecentTicket.serviceType,
+        queueNumber: mostRecentTicket.queueNumber,
+        status: mostRecentTicket.status || 'waiting',
+        createdAt: mostRecentTicket.createdAt,
+        servedAt: mostRecentTicket.servedAt,
+        calledNextAt: mostRecentTicket.calledNextAt,
+      })
+    }
+  }, [combinedHistory])
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     setLimitError('')
@@ -655,7 +673,7 @@ function StudentDashboard() {
 
       <main className="max-w-7xl mx-auto px-4 md:px-6 py-8">
         {/* Service Call Notification - Shows when ticket is called next */}
-        {lastTicket && lastTicket.status === 'serving' && (
+        {lastTicket && lastTicket.status === 'serving' && lastTicket.calledNextAt && (
           <div className="mb-6 flex items-center justify-center animate-in fade-in slide-in-from-top-4 duration-300">
             <div className="inline-flex items-center gap-3 bg-gradient-to-r from-blue-500 to-blue-600 text-white px-6 py-3 rounded-full shadow-lg">
               <svg className="w-5 h-5 animate-bounce" fill="currentColor" viewBox="0 0 20 20">
