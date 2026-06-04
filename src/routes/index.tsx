@@ -480,11 +480,11 @@ function StudentDashboard() {
       console.log(`   Golden Ref: ${ticketRef}`)
       console.log('📱 Waiting for user to complete payment on their phone...')
       
-      // Poll status every 2 seconds (wait for callback)
-      // Timeout: 1 minute (60 seconds / 2 = 30 attempts)
+      // Poll status every 2.5 seconds (wait for callback)
+      // Timeout: 12.50 seconds (2.5 seconds × 5 attempts = 12,500ms)
       let attempts = 0
-      const MAX_ATTEMPTS = 30 // 1 minute
-      const POLL_INTERVAL = 2000 // 2 seconds
+      const MAX_ATTEMPTS = 5 // 5 attempts
+      const POLL_INTERVAL = 2500 // 2.5 seconds (12500ms total timeout)
       
       const newPollInterval = setInterval(async () => {
         attempts++
@@ -494,7 +494,7 @@ function StudentDashboard() {
           setPollInterval(null)
           setGoldenLoading(false)
           setGoldenError(
-            '⏱️ Payment verification timed out after 1 minute.\n' +
+            '⏱️ Payment verification timed out after 12.50 seconds.\n' +
             'If you completed the payment, your ticket will be upgraded shortly.\n' +
             'Check your M-Pesa message for confirmation.'
           )
@@ -1100,7 +1100,7 @@ function StudentDashboard() {
                         <li>4️⃣ This dialog updates to show ✅ Payment Successful!</li>
                       </ol>
                       <hr className="my-2" />
-                      <p className="font-semibold">⏱️ Timeout: 1 minute. If prompt doesn't appear:</p>
+                      <p className="font-semibold">⏱️ Timeout: 12.50 seconds. If prompt doesn't appear:</p>
                       <ul className="ml-4 space-y-1 text-left">
                         <li>✓ Verify your phone number is correct (254XXXXXXXXX)</li>
                         <li>✓ Ensure your M-Pesa account has sufficient balance</li>
