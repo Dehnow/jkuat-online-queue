@@ -725,53 +725,56 @@ function StudentDashboard() {
               {/* What is Golden Ticket */}
               <div className="mb-4 pb-4 border-b border-yellow-200">
                 <p className="text-sm font-semibold text-yellow-900 mb-2">✨ What is it?</p>
-                <p className="text-sm text-yellow-800">A premium ticket that moves you to the front of the queue, ensuring you're served before regular ticket holders.</p>
+                <p className="text-sm text-yellow-800">A premium ticket upgrade that prioritizes your position in the queue. Pay KES 200 via M-Pesa, and your ticket moves to the front of the queue for priority service.</p>
+              </div>
+
+              {/* How It Works */}
+              <div className="mb-4 pb-4 border-b border-yellow-200">
+                <p className="text-sm font-semibold text-yellow-900 mb-2">🔄 How It Works</p>
+                <div className="space-y-2 text-sm text-yellow-800">
+                  <p><strong>Step 1:</strong> Create a regular ticket first</p>
+                  <p><strong>Step 2:</strong> Click "⭐ Upgrade to Golden Ticket" button on your latest ticket</p>
+                  <p><strong>Step 3:</strong> A payment dialog opens - enter your M-Pesa phone number</p>
+                  <p><strong>Step 4:</strong> System sends M-Pesa prompt to your phone</p>
+                  <p><strong>Step 5:</strong> Complete payment by entering your M-Pesa PIN</p>
+                  <p><strong>Step 6:</strong> Your ticket instantly gets priority status and moves to front</p>
+                </div>
               </div>
 
               {/* Benefits */}
               <div className="mb-4 pb-4 border-b border-yellow-200">
-                <p className="text-sm font-semibold text-yellow-900 mb-2">🎯 Benefits</p>
+                <p className="text-sm font-semibold text-yellow-900 mb-2">🎯 What You Get</p>
                 <ul className="space-y-1.5 text-sm text-yellow-800">
-                  <li className="flex items-center gap-2"><span className="text-green-600">✓</span> Jump to the front of the queue</li>
-                  <li className="flex items-center gap-2"><span className="text-green-600">✓</span> Get served before regular tickets</li>
-                  <li className="flex items-center gap-2"><span className="text-green-600">✓</span> Get a unique reference number</li>
-                  <li className="flex items-center gap-2"><span className="text-green-600">✓</span> Priority service guarantee</li>
+                  <li className="flex items-center gap-2"><span className="text-green-600">✓</span> Your position in queue immediately improves to first</li>
+                  <li className="flex items-center gap-2"><span className="text-green-600">✓</span> Staff serves golden tickets before regular ones</li>
+                  <li className="flex items-center gap-2"><span className="text-green-600">✓</span> Unique golden ticket reference number</li>
+                  <li className="flex items-center gap-2"><span className="text-green-600">✓</span> Visible ✨ indicator on your ticket</li>
                 </ul>
               </div>
 
-              {/* How to Upgrade */}
+              {/* Claim Gold Button */}
               <div className="mb-4 pb-4 border-b border-yellow-200">
-                <p className="text-sm font-semibold text-yellow-900 mb-2">📱 How to Upgrade</p>
-                <ol className="space-y-1 text-sm text-yellow-800">
-                  <li className="flex gap-2"><span className="font-bold text-yellow-900">1.</span> Get a regular ticket first</li>
-                  <li className="flex gap-2"><span className="font-bold text-yellow-900">2.</span> Click "Upgrade to Golden Ticket"</li>
-                  <li className="flex gap-2"><span className="font-bold text-yellow-900">3.</span> Enter your M-Pesa phone number</li>
-                  <li className="flex gap-2"><span className="font-bold text-yellow-900">4.</span> Complete payment (KES 200)</li>
-                  <li className="flex gap-2"><span className="font-bold text-yellow-900">5.</span> Wait for M-Pesa confirmation</li>
-                </ol>
+                <p className="text-sm font-semibold text-yellow-900 mb-2">🏆 Claim Gold Button</p>
+                <p className="text-sm text-yellow-800 mb-2">Once your golden ticket payment is confirmed, a <strong>"Claim Gold"</strong> button appears in your ticket history.</p>
+                <div className="bg-white/50 rounded-lg p-3 space-y-1 text-sm text-yellow-800">
+                  <p><strong>What it does:</strong></p>
+                  <p>• Finalizes your golden ticket upgrade</p>
+                  <p>• Moves your ticket to the priority queue</p>
+                  <p>• Gives you a new priority queue number (e.g., #5✨)</p>
+                  <p>• Notifies staff about your priority status</p>
+                  <p className="pt-2 text-xs"><em>Click it once payment is confirmed to activate priority service</em></p>
+                </div>
               </div>
 
               {/* Payment Info */}
-              <div className="mb-4 pb-4 border-b border-yellow-200">
+              <div>
                 <p className="text-sm font-semibold text-yellow-900 mb-2">💳 Payment Details</p>
                 <div className="space-y-1 text-sm text-yellow-800 bg-white/50 rounded-lg p-3">
                   <p><strong>Cost:</strong> KES 200</p>
                   <p><strong>Payment Method:</strong> M-Pesa</p>
-                  <p><strong>Processing Time:</strong> Instant (within seconds)</p>
-                  <p><strong>Confirmation:</strong> You'll receive an M-Pesa message</p>
+                  <p><strong>Processing Time:</strong> Instant (within 12.5 seconds)</p>
+                  <p><strong>Confirmation:</strong> M-Pesa message to your phone</p>
                 </div>
-              </div>
-
-              {/* Important Notes */}
-              <div>
-                <p className="text-sm font-semibold text-yellow-900 mb-2">⚠️ Important Notes</p>
-                <ul className="space-y-1 text-xs text-yellow-800">
-                  <li>• Your most recent ticket can be upgraded to golden</li>
-                  <li>• Each ticket can only be upgraded once</li>
-                  <li>• Golden ticket is non-refundable once purchased</li>
-                  <li>• You must complete payment within 12.5 seconds</li>
-                  <li>• If payment times out, confirm status at the counter</li>
-                </ul>
               </div>
             </div>
 
