@@ -713,6 +713,68 @@ function StudentDashboard() {
               </ol>
             </div>
 
+            {/* Golden Ticket Info Board */}
+            <div className="bg-gradient-to-br from-yellow-50 to-amber-50 rounded-3xl shadow-md p-6 border-2 border-yellow-300">
+              <h3 className="text-xl font-bold text-yellow-900 mb-4 flex items-center gap-2">
+                <svg className="w-6 h-6" fill="currentColor" viewBox="0 0 20 20">
+                  <path d="M10 15l-5.878 3.09 1.123-6.545L.489 6.91l6.572-.955L10 0l2.939 5.955 6.572.955-4.756 4.635 1.123 6.545z" />
+                </svg>
+                Golden Ticket
+              </h3>
+
+              {/* What is Golden Ticket */}
+              <div className="mb-4 pb-4 border-b border-yellow-200">
+                <p className="text-sm font-semibold text-yellow-900 mb-2">✨ What is it?</p>
+                <p className="text-sm text-yellow-800">A premium ticket that moves you to the front of the queue, ensuring you're served before regular ticket holders.</p>
+              </div>
+
+              {/* Benefits */}
+              <div className="mb-4 pb-4 border-b border-yellow-200">
+                <p className="text-sm font-semibold text-yellow-900 mb-2">🎯 Benefits</p>
+                <ul className="space-y-1.5 text-sm text-yellow-800">
+                  <li className="flex items-center gap-2"><span className="text-green-600">✓</span> Jump to the front of the queue</li>
+                  <li className="flex items-center gap-2"><span className="text-green-600">✓</span> Get served before regular tickets</li>
+                  <li className="flex items-center gap-2"><span className="text-green-600">✓</span> Get a unique reference number</li>
+                  <li className="flex items-center gap-2"><span className="text-green-600">✓</span> Priority service guarantee</li>
+                </ul>
+              </div>
+
+              {/* How to Upgrade */}
+              <div className="mb-4 pb-4 border-b border-yellow-200">
+                <p className="text-sm font-semibold text-yellow-900 mb-2">📱 How to Upgrade</p>
+                <ol className="space-y-1 text-sm text-yellow-800">
+                  <li className="flex gap-2"><span className="font-bold text-yellow-900">1.</span> Get a regular ticket first</li>
+                  <li className="flex gap-2"><span className="font-bold text-yellow-900">2.</span> Click "Upgrade to Golden Ticket"</li>
+                  <li className="flex gap-2"><span className="font-bold text-yellow-900">3.</span> Enter your M-Pesa phone number</li>
+                  <li className="flex gap-2"><span className="font-bold text-yellow-900">4.</span> Complete payment (KES 200)</li>
+                  <li className="flex gap-2"><span className="font-bold text-yellow-900">5.</span> Wait for M-Pesa confirmation</li>
+                </ol>
+              </div>
+
+              {/* Payment Info */}
+              <div className="mb-4 pb-4 border-b border-yellow-200">
+                <p className="text-sm font-semibold text-yellow-900 mb-2">💳 Payment Details</p>
+                <div className="space-y-1 text-sm text-yellow-800 bg-white/50 rounded-lg p-3">
+                  <p><strong>Cost:</strong> KES 200</p>
+                  <p><strong>Payment Method:</strong> M-Pesa</p>
+                  <p><strong>Processing Time:</strong> Instant (within seconds)</p>
+                  <p><strong>Confirmation:</strong> You'll receive an M-Pesa message</p>
+                </div>
+              </div>
+
+              {/* Important Notes */}
+              <div>
+                <p className="text-sm font-semibold text-yellow-900 mb-2">⚠️ Important Notes</p>
+                <ul className="space-y-1 text-xs text-yellow-800">
+                  <li>• Your most recent ticket can be upgraded to golden</li>
+                  <li>• Each ticket can only be upgraded once</li>
+                  <li>• Golden ticket is non-refundable once purchased</li>
+                  <li>• You must complete payment within 12.5 seconds</li>
+                  <li>• If payment times out, confirm status at the counter</li>
+                </ul>
+              </div>
+            </div>
+
             {/* About System */}
             <div className="bg-white/90 backdrop-blur-sm rounded-3xl shadow-md p-6 border border-gray-100">
               <h3 className="text-xl font-bold text-gray-800 mb-3 flex items-center gap-2">
