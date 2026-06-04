@@ -1,6 +1,6 @@
 import { useNavigate } from '@tanstack/react-router'
 import { useState, useEffect, useCallback } from 'react'
-import { Building2, Banknote, Headphones } from 'lucide-react'
+import { Building2, Banknote, Headphones, Download, ChevronDown } from 'lucide-react'
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts'
 import OfficeManagement from '../components/OfficeManagement'
 import FeedbackSystem from '../components/FeedbackSystem'
@@ -70,6 +70,66 @@ const getTodayServedEntries = (entries: QueueEntry[]) => {
   return entries.filter(entry => entry.servedAt && new Date(entry.servedAt).toDateString() === today)
 }
 
+// Export functions
+const exportToCSV = (entries: QueueEntry[]) => {
+  const headers = ['Ref No', 'Ticket Number', 'Name', 'Student ID', 'Service', 'Served At']
+  const rows = entries.map(entry => {
+    const serviceCode = entry.serviceType === 'registrar' ? 'REG' : entry.serviceType === 'finance' ? 'FIN' : 'ICT'
+    const date = new Date(entry.createdAt)
+    const day = String(date.getDate()).padStart(2, '0')
+    const month = String(date.getMonth() + 1).padStart(2, '0')
+    const year = String(date.getFullYear()).slice(-2)
+    const ticketNumber = `${serviceCode}${day}${month}${year}`
+    return [
+      `REF-${entry.id}`,
+      `#${entry.queueNumber}`,
+      entry.name,
+      entry.studentId,
+      entry.serviceType.replace('_', ' ').toUpperCase(),
+      entry.servedAt ? new Date(entry.servedAt).toLocaleString() : '—'
+    ]
+  })
+  
+  let csv = headers.join(',') + '\n'
+  rows.forEach(row => {
+    csv += row.map(cell => `"${cell}"`).join(',') + '\n'
+  })
+  
+  const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' })
+  const link = document.createElement('a')
+  const url = URL.createObjectURL(blob)
+  link.setAttribute('href', url)
+  link.setAttribute('download', `Service-Log-${new Date().toISOString().split('T')[0]}.csv`)
+  link.style.visibility = 'hidden'
+  document.body.appendChild(link)
+  link.click()
+  document.body.removeChild(link)
+}
+
+const exportToWord = (entries: QueueEntry[]) => {
+  const timestamp = new Date().toLocaleString()
+  const dateFormatted = new Date().toISOString().split('T')[0]
+  
+  let html = `<html xmlns="http://www.w3.org/1999/xhtml" xmlns:v="urn:schemas-microsoft-com:vml" xmlns:w="urn:schemas-microsoft-com:office:word"><head><meta charset="UTF-8"></head><body style="font-family: Calibri, Arial, sans-serif; line-height: 1.5; margin: 1in;"><h1 style="text-align: center; color: #1a5c2a; margin-bottom: 10px;">JKUAT Queue Management Service Log</h1><p style="text-align: center; color: #666; font-size: 12px; margin-bottom: 20px;">Generated: ${timestamp}</p><p><strong>Total Entries:</strong> ${entries.length}</p><table style="width: 100%; border-collapse: collapse; margin-top: 20px;"><thead><tr style="background-color: #f0f0f0; border: 1px solid #ddd;"><th style="border: 1px solid #ddd; padding: 8px; text-align: left;">Ref No</th><th style="border: 1px solid #ddd; padding: 8px; text-align: left;">Ticket</th><th style="border: 1px solid #ddd; padding: 8px; text-align: left;">Name</th><th style="border: 1px solid #ddd; padding: 8px; text-align: left;">Student ID</th><th style="border: 1px solid #ddd; padding: 8px; text-align: left;">Service</th><th style="border: 1px solid #ddd; padding: 8px; text-align: left;">Served At</th></tr></thead><tbody>`
+  
+  entries.forEach((entry, idx) => {
+    const bgColor = idx % 2 === 0 ? 'white' : '#f9f9f9'
+    html += `<tr style="background-color: ${bgColor}; border: 1px solid #ddd;"><td style="border: 1px solid #ddd; padding: 8px;">REF-${entry.id}</td><td style="border: 1px solid #ddd; padding: 8px;">#${entry.queueNumber}</td><td style="border: 1px solid #ddd; padding: 8px;">${entry.name}</td><td style="border: 1px solid #ddd; padding: 8px;">${entry.studentId}</td><td style="border: 1px solid #ddd; padding: 8px;">${entry.serviceType.replace('_', ' ')}</td><td style="border: 1px solid #ddd; padding: 8px;">${entry.servedAt ? new Date(entry.servedAt).toLocaleString() : '—'}</td></tr>`
+  })
+  
+  html += `</tbody></table><footer style="margin-top: 40px; border-top: 1px solid #ddd; padding-top: 10px; font-size: 11px; color: #999; text-align: center;">This document was generated automatically by JKUAT Queue Management System. For official use only.</footer></body></html>`
+  
+  const blob = new Blob([html], { type: 'application/msword;charset=utf-8;' })
+  const link = document.createElement('a')
+  const url = URL.createObjectURL(blob)
+  link.setAttribute('href', url)
+  link.setAttribute('download', `Service-Log-${dateFormatted}.doc`)
+  link.style.visibility = 'hidden'
+  document.body.appendChild(link)
+  link.click()
+  document.body.removeChild(link)
+}
+
 export default function AdminPage() {
   const navigate = useNavigate()
   const [loggedIn, setLoggedIn] = useState(false)
@@ -83,6 +143,7 @@ export default function AdminPage() {
   const [actionLoading, setActionLoading] = useState(false)
   const [currentDateTime, setCurrentDateTime] = useState(new Date())
   const [offices, setOffices] = useState<any[]>([])
+  const [exportMenuOpen, setExportMenuOpen] = useState(false)
 
   // Auth check
   useEffect(() => {
@@ -609,72 +670,65 @@ export default function AdminPage() {
         {activeTab === 'report' && (
           <div className="space-y-8">
             <div className="bg-white/90 backdrop-blur-sm rounded-3xl shadow-md p-6">
-              <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4 mb-6">
+              <div className="flex items-center justify-between mb-6">
                 <div>
-                  <h2 className="text-2xl font-bold text-gray-800">Service Report</h2>
-                  <p className="text-sm text-gray-500 mt-1">Latest served queue entries and today&apos;s service log.</p>
+                  <h2 className="text-2xl font-bold text-gray-800">Service Log</h2>
+                  <p className="text-sm text-gray-500 mt-1">All served queue entries from all offices.</p>
                 </div>
-                <div className="flex flex-wrap gap-4">
-                  <div className="bg-green-50 border border-green-200 rounded-2xl px-4 py-3">
-                    <p className="text-xs uppercase text-gray-500">Total Served</p>
-                    <p className="text-2xl font-bold text-green-700">{reportData.length}</p>
-                  </div>
-                  <div className="bg-blue-50 border border-blue-200 rounded-2xl px-4 py-3">
-                    <p className="text-xs uppercase text-gray-500">Served Today</p>
-                    <p className="text-2xl font-bold text-blue-700">{getTodayServedEntries(reportData).length}</p>
-                  </div>
+                <div className="relative">
+                  <button
+                    onClick={() => setExportMenuOpen(!exportMenuOpen)}
+                    className="flex items-center gap-2 px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors font-medium text-sm"
+                  >
+                    <Download className="w-4 h-4" />
+                    Export
+                    <ChevronDown className="w-4 h-4" />
+                  </button>
+                  {exportMenuOpen && (
+                    <div className="absolute right-0 mt-2 w-40 bg-white border border-gray-200 rounded-lg shadow-lg z-10">
+                      <button
+                        onClick={() => {
+                          exportToCSV(reportData)
+                          setExportMenuOpen(false)
+                        }}
+                        className="w-full text-left px-4 py-2 hover:bg-gray-100 transition-colors text-gray-700 font-medium text-sm border-b border-gray-100"
+                      >
+                        📊 Export to Excel
+                      </button>
+                      <button
+                        onClick={() => {
+                          exportToWord(reportData)
+                          setExportMenuOpen(false)
+                        }}
+                        className="w-full text-left px-4 py-2 hover:bg-gray-100 transition-colors text-gray-700 font-medium text-sm"
+                      >
+                        📄 Export to Word
+                      </button>
+                    </div>
+                  )}
                 </div>
               </div>
-              <div className="overflow-x-auto rounded-3xl border border-gray-100">
-                <table className="w-full text-sm bg-white">
-                  <thead className="bg-gray-50">
-                    <tr>
-                      <th className="p-3 text-left text-xs uppercase tracking-wide text-gray-500">Ref No</th>
-                      <th className="p-3 text-left text-xs uppercase tracking-wide text-gray-500">Queue No</th>
-                      <th className="p-3 text-left text-xs uppercase tracking-wide text-gray-500">Name</th>
-                      <th className="p-3 text-left text-xs uppercase tracking-wide text-gray-500">Student ID</th>
-                      <th className="p-3 text-left text-xs uppercase tracking-wide text-gray-500">Service</th>
-                      <th className="p-3 text-left text-xs uppercase tracking-wide text-gray-500">Served At</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {reportData.slice(0, 10).map(entry => (
-                      <tr key={entry.id} className="border-t border-gray-100 hover:bg-gray-50">
-                        <td className="p-3 font-mono text-green-600">REF-{entry.id}</td>
-                        <td className="p-3 font-bold">#{entry.queueNumber}</td>
-                        <td className="p-3">{entry.name}</td>
-                        <td className="p-3">{entry.studentId}</td>
-                        <td className="p-3 capitalize">{entry.serviceType.replace('_', ' ')}</td>
-                        <td className="p-3">{entry.servedAt ? new Date(entry.servedAt).toLocaleString() : '—'}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
+              <div className="mb-4 p-4 bg-blue-50 border border-blue-200 rounded-2xl">
+                <p className="text-sm text-blue-700"><strong>Total entries:</strong> {reportData.length}</p>
               </div>
-            </div>
-
-            <div className="bg-white/90 backdrop-blur-sm rounded-3xl shadow-md p-6">
-              <div className="flex items-center justify-between mb-4">
-                <div>
-                  <h3 className="text-xl font-bold text-gray-800">Today&apos;s Service Log</h3>
-                  <p className="text-sm text-gray-500">Form-style log for people served today.</p>
-                </div>
-                <span className="text-sm text-gray-500">{getTodayServedEntries(reportData).length} entries</span>
-              </div>
-              {getTodayServedEntries(reportData).length === 0 ? (
-                <div className="rounded-3xl border border-dashed border-gray-200 bg-gray-50 p-10 text-center text-gray-400">No service entries found for today.</div>
+              {reportData.length === 0 ? (
+                <div className="rounded-3xl border border-dashed border-gray-200 bg-gray-50 p-10 text-center text-gray-400">No service entries found.</div>
               ) : (
                 <div className="grid gap-4">
-                  {getTodayServedEntries(reportData).map(entry => (
-                    <div key={entry.id} className="rounded-3xl border border-gray-200 bg-gray-50 p-5 shadow-sm">
-                      <div className="grid gap-4 md:grid-cols-2">
+                  {reportData.map(entry => (
+                    <div key={entry.id} className="rounded-3xl border border-gray-200 bg-gray-50 p-5 shadow-sm hover:shadow-md transition-shadow">
+                      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+                        <div>
+                          <label className="block text-xs font-semibold uppercase tracking-wide text-gray-500">Ref No</label>
+                          <p className="mt-1 text-lg font-semibold text-gray-800">REF-{entry.id}</p>
+                        </div>
                         <div>
                           <label className="block text-xs font-semibold uppercase tracking-wide text-gray-500">Ticket</label>
-                          <p className="mt-1 text-lg font-semibold text-gray-800">#{entry.queueNumber}</p>
+                          <p className="mt-1 text-lg font-bold text-green-600">#{entry.queueNumber}</p>
                         </div>
                         <div>
                           <label className="block text-xs font-semibold uppercase tracking-wide text-gray-500">Service</label>
-                          <p className="mt-1 text-gray-700 capitalize">{entry.serviceType.replace('_', ' ')}</p>
+                          <p className="mt-1 text-gray-700 capitalize font-medium">{entry.serviceType.replace('_', ' ')}</p>
                         </div>
                         <div>
                           <label className="block text-xs font-semibold uppercase tracking-wide text-gray-500">Name</label>
@@ -684,15 +738,9 @@ export default function AdminPage() {
                           <label className="block text-xs font-semibold uppercase tracking-wide text-gray-500">Student ID</label>
                           <p className="mt-1 text-gray-700">{entry.studentId}</p>
                         </div>
-                      </div>
-                      <div className="mt-4 grid gap-4 md:grid-cols-2">
                         <div>
                           <label className="block text-xs font-semibold uppercase tracking-wide text-gray-500">Served At</label>
                           <p className="mt-1 text-gray-700">{entry.servedAt ? new Date(entry.servedAt).toLocaleString() : '—'}</p>
-                        </div>
-                        <div>
-                          <label className="block text-xs font-semibold uppercase tracking-wide text-gray-500">Record</label>
-                          <p className="mt-1 text-gray-700">ID {entry.id}</p>
                         </div>
                       </div>
                     </div>
