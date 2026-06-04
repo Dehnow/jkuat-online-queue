@@ -626,22 +626,27 @@ function StudentDashboard() {
     <div className="min-h-screen bg-gradient-to-br from-gray-50 to-gray-100 font-['Inter',system-ui]">
       {/* Header */}
       <header className="sticky top-0 z-30 bg-white/80 backdrop-blur-md border-b border-gray-200 shadow-sm">
-        <div className="max-w-7xl mx-auto px-4 md:px-6 py-4 flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <img src="/queue-bg.jpeg" className="w-12 h-12 rounded-full shadow-md"/>
-            <div>
-              <h1 className="text-2xl font-bold text-green-600">JKUAT Online Queue</h1>
-              <p className="text-xs text-gray-500">Smart Queue Management System</p>
+        <div className="max-w-7xl mx-auto px-3 sm:px-4 md:px-6 py-3 sm:py-4">
+          <div className="flex items-center justify-between gap-2 sm:gap-4">
+            {/* Left Section: Logo & Title */}
+            <div className="flex items-center gap-2 sm:gap-3 min-w-0 flex-1">
+              <img src="/queue-bg.jpeg" className="w-10 h-10 sm:w-12 sm:h-12 rounded-full shadow-md flex-shrink-0"/>
+              <div className="min-w-0">
+                <h1 className="text-base sm:text-xl md:text-2xl font-bold text-green-600 truncate">JKUAT Queue</h1>
+                <p className="text-xs text-gray-500 truncate">Smart Management</p>
+              </div>
             </div>
-          </div>
-          <div className="flex items-center gap-4">
-            <div className="text-right">
-              <p className="text-sm font-semibold text-gray-800">{studentIdHeader || 'Student'}</p>
-              <p className="text-xs text-gray-500">Active: {activeTicketCount}/3</p>
-            </div>
-            <button onClick={manualRefresh} disabled={isRefreshing} className="p-2 hover:bg-gray-100 rounded-lg transition">
-              <svg className={`w-5 h-5 text-green-600 ${isRefreshing ? 'animate-spin' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" /></svg>
+
+            {/* Right Section: Student Info & Refresh */}
+            <div className="flex items-center gap-2 sm:gap-4 flex-shrink-0">
+              <div className="text-right hidden sm:block">
+                <p className="text-xs sm:text-sm font-semibold text-gray-800 truncate">{studentIdHeader || 'Student'}</p>
+                <p className="text-xs text-gray-500 whitespace-nowrap">Active: {activeTicketCount}/3</p>
+              </div>
+              <button onClick={manualRefresh} disabled={isRefreshing} className="p-1.5 sm:p-2 hover:bg-gray-100 rounded-lg transition flex-shrink-0">
+              <svg className={`w-4 h-4 sm:w-5 sm:h-5 text-green-600 ${isRefreshing ? 'animate-spin' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" /></svg>
             </button>
+            </div>
           </div>
         </div>
       </header>
