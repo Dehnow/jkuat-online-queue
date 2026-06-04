@@ -176,6 +176,8 @@ function StudentDashboard() {
   const [checkoutRequestId, setCheckoutRequestId] = useState<string | null>(null)
   const [goldenTicketRef, setGoldenTicketRef] = useState<string | null>(null)
   const [pollInterval, setPollInterval] = useState<NodeJS.Timeout | null>(null)
+  const [showConfirmationDialog, setShowConfirmationDialog] = useState(false)
+  const [confirmationTimeoutId, setConfirmationTimeoutId] = useState<NodeJS.Timeout | null>(null)
   const queryClient = useQueryClient()
 
   useEffect(() => {
@@ -485,19 +487,25 @@ function StudentDashboard() {
       let attempts = 0
       const MAX_ATTEMPTS = 5 // 5 attempts
       const POLL_INTERVAL = 2500 // 2.5 seconds (12500ms total timeout)
-      
+
       const newPollInterval = setInterval(async () => {
         attempts++
-        
+
         if (attempts > MAX_ATTEMPTS) {
           clearInterval(newPollInterval)
           setPollInterval(null)
           setGoldenLoading(false)
-          setGoldenError(
-            '⏱️ Payment verification timed out after 12.50 seconds.\n' +
-            'If you completed the payment, your ticket will be upgraded shortly.\n' +
-            'Check your M-Pesa message for confirmation.'
-          )
+          // Show confirmation dialog instead of error
+          setShowConfirmationDialog(true)
+          // Set 5-second timeout for confirmation dialog
+          const timeoutId = setTimeout(() => {
+            setShowConfirmationDialog(false)
+            // Clear any remaining state
+            setMpesaStatus(null)
+            setCheckoutRequestId(null)
+            setGoldenError('')
+          }, 5000) // 5 seconds
+          setConfirmationTimeoutId(timeoutId)
           return
         }
 
@@ -1205,127 +1213,6 @@ function StudentDashboard() {
                     </div>
                   </div>
 
-                  {/* Dev Buttons */}
-                  <div className="flex gap-3 pt-2">
-                    <button
-                      type="button"
-                      onClick={async () => {
-                        try {
-                          if (!checkoutRequestId) {
-                            setGoldenError('❌ No active transaction found. Please initiate payment first.')
-                            return
-                          }
-                          const res = await fetch('/api/queue/mpesa-callback', {
-                            method: 'POST',
-                            headers: { 'Content-Type': 'application/json' },
-                            body: JSON.stringify({
-                              Body: {
-                                stkCallback: {
-                                  MerchantRequestID: 'TEST_FAIL_' + Date.now(),
-                                  CheckoutRequestID: checkoutRequestId,
-                                  ResultCode: 1,
-                                  ResultDesc: 'The service request has been rejected by user.',
-                                  CallbackMetadata: {
-                                    Item: [
-                                      { Name: 'Amount', Value: 200 },
-                                      { Name: 'MpesaReceiptNumber', Value: 'FAILED' + Date.now() },
-                                      { Name: 'AccountReference', Value: goldenTicketRef }
-                                    ]
-                                  }
-                                }
-                              }
-                            })
-                          })
-                          if (pollInterval) {
-                            clearInterval(pollInterval)
-                            setPollInterval(null)
-                          }
-                          setGoldenLoading(false)
-                          setMpesaStatus('failed')
-                          setGoldenError('❌ Payment Failed. Please try again.')
-                        } catch (err) {
-                          console.error('Error:', err)
-                        }
-                      }}
-                      className="flex-1 h-12 bg-white border border-red-200 text-red-500 font-bold rounded-2xl hover:bg-red-50 transition-all duration-300"
-                    >
-                      Fail
-                    </button>
-                    <button
-                      type="button"
-                      onClick={async () => {
-                        try {
-                          if (!checkoutRequestId) {
-                            setGoldenError('❌ No active transaction found. Please initiate payment first.')
-                            return
-                          }
-                          const res = await fetch('/api/queue/mpesa-callback', {
-                            method: 'POST',
-                            headers: { 'Content-Type': 'application/json' },
-                            body: JSON.stringify({
-                              Body: {
-                                stkCallback: {
-                                  MerchantRequestID: 'TEST_' + Date.now(),
-                                  CheckoutRequestID: checkoutRequestId,
-                                  ResultCode: 0,
-                                  ResultDesc: 'The service request has been processed successfully.',
-                                  CallbackMetadata: {
-                                    Item: [
-                                      { Name: 'Amount', Value: 200 },
-                                      { Name: 'MpesaReceiptNumber', Value: 'SIM' + Date.now() },
-                                      { Name: 'TransactionDate', Value: new Date().toISOString().replace(/[:-]/g, '').slice(0, 14) },
-                                      { Name: 'PhoneNumber', Value: goldenPhone },
-                                      { Name: 'AccountReference', Value: goldenTicketRef }
-                                    ]
-                                  }
-                                }
-                              }
-                            })
-                          })
-                          if (!res.ok) {
-                            setGoldenError('❌ Failed to process payment callback')
-                            return
-                          }
-                          if (pollInterval) {
-                            clearInterval(pollInterval)
-                            setPollInterval(null)
-                          }
-                          setMpesaStatus('success')
-                          setGoldenSuccess(true)
-                          setGoldenLoading(false)
-                          const studentId = studentIdHeader || sessionStorage.getItem('studentId') || ''
-                          if (studentId) {
-                            const historyKey = `ticketHistory_${studentId}`
-                            const existing = localStorage.getItem(historyKey)
-                            const history = existing ? JSON.parse(existing) : []
-                            const updatedHistory = history.map((t: StoredTicket) =>
-                              t.id === selectedTicketForGolden
-                                ? {
-                                    ...t,
-                                    isGolden: true,
-                                    goldenTicketRef: goldenTicketRef,
-                                    mpesaStatus: 'success',
-                                    mpesaPaidAt: new Date().toISOString()
-                                  }
-                                : t
-                            )
-                            localStorage.setItem(historyKey, JSON.stringify(updatedHistory))
-                            setTicketHistory(dedupeStoredTickets(updatedHistory))
-                          }
-                          setTimeout(() => {
-                            setShowGoldenModal(false)
-                            queryClient.invalidateQueries({ queryKey: ['service-stats'] })
-                            queryClient.invalidateQueries({ queryKey: ['ticket-history', studentIdHeader] })
-                          }, 3000)
-                        } catch (err) {
-                          console.error('Error:', err)
-                        }
-                      }}
-                      className="flex-1 h-12 bg-gradient-to-r from-green-600 to-green-500 text-white font-bold rounded-2xl hover:shadow-lg transition-all duration-300"
-                    >
-                      Successful
-                    </button>
-                  </div>
                 </div>
               )}
 
@@ -1426,6 +1313,195 @@ function StudentDashboard() {
                   </div>
                 </form>
               )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* M-Pesa Confirmation Dialog - Appears after payment timeout */}
+      {showConfirmationDialog && (
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+          <div
+            className="bg-white rounded-2xl overflow-hidden transition-all duration-300"
+            style={{
+              width: '440px',
+              maxWidth: 'calc(100% - 32px)',
+              boxShadow: '0 12px 40px rgba(0,0,0,0.08)',
+              animation: 'modal-slide-up 300ms cubic-bezier(0.34, 1.56, 0.64, 1)',
+            }}
+            onClick={e => e.stopPropagation()}
+          >
+            <style>{`
+              @keyframes modal-slide-up { from { transform: translateY(20px); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
+            `}</style>
+
+            {/* Header */}
+            <div className="bg-gradient-to-r from-blue-500 to-blue-600 px-6 py-8 text-center">
+              <div className="w-12 h-12 mx-auto mb-3 flex items-center justify-center bg-blue-400 rounded-full">
+                <svg className="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                </svg>
+              </div>
+              <h2 className="text-2xl font-bold text-white">M-Pesa Confirmation</h2>
+              <p className="text-blue-100 text-sm mt-1">Awaiting desk verification</p>
+            </div>
+
+            {/* Content */}
+            <div className="px-6 py-8">
+              <div className="space-y-6">
+                {/* Info Message */}
+                <div className="bg-blue-50 border border-blue-200 rounded-2xl p-4 text-center">
+                  <p className="text-sm font-semibold text-blue-900 mb-2">📱 M-Pesa Message Status</p>
+                  <p className="text-lg font-bold text-blue-900">M-Pesa Message will be requested at the counter</p>
+                  <p className="text-xs text-blue-700 mt-2">The payment confirmation will be verified by staff</p>
+                </div>
+
+                {/* Instructions */}
+                <div className="space-y-3 bg-gray-50 rounded-2xl p-4">
+                  <p className="text-xs font-bold text-gray-700 uppercase tracking-wide">What happens next:</p>
+                  <div className="space-y-2">
+                    <div className="flex items-start gap-3">
+                      <div className="flex-shrink-0 w-6 h-6 bg-blue-500 text-white rounded-full flex items-center justify-center text-xs font-bold">1</div>
+                      <p className="text-sm text-gray-700">Proceed to the service counter</p>
+                    </div>
+                    <div className="flex items-start gap-3">
+                      <div className="flex-shrink-0 w-6 h-6 bg-blue-500 text-white rounded-full flex items-center justify-center text-xs font-bold">2</div>
+                      <p className="text-sm text-gray-700">Show staff your M-Pesa confirmation message</p>
+                    </div>
+                    <div className="flex items-start gap-3">
+                      <div className="flex-shrink-0 w-6 h-6 bg-blue-500 text-white rounded-full flex items-center justify-center text-xs font-bold">3</div>
+                      <p className="text-sm text-gray-700">Staff will verify and upgrade your ticket</p>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Timer Info */}
+                <div className="text-center text-xs text-gray-500">
+                  <p>This dialog will auto-close in 5 seconds</p>
+                </div>
+
+                {/* Action Buttons */}
+                <div className="flex gap-3 pt-2">
+                  <button
+                    type="button"
+                    onClick={async () => {
+                      try {
+                        if (!checkoutRequestId) {
+                          alert('❌ No active transaction found.')
+                          return
+                        }
+                        const res = await fetch('/api/queue/mpesa-callback', {
+                          method: 'POST',
+                          headers: { 'Content-Type': 'application/json' },
+                          body: JSON.stringify({
+                            Body: {
+                              stkCallback: {
+                                MerchantRequestID: 'TEST_FAIL_' + Date.now(),
+                                CheckoutRequestID: checkoutRequestId,
+                                ResultCode: 1,
+                                ResultDesc: 'The service request has been rejected by user.',
+                                CallbackMetadata: {
+                                  Item: [
+                                    { Name: 'Amount', Value: 200 },
+                                    { Name: 'MpesaReceiptNumber', Value: 'FAILED' + Date.now() },
+                                    { Name: 'AccountReference', Value: goldenTicketRef }
+                                  ]
+                                }
+                              }
+                            }
+                          })
+                        })
+                        if (confirmationTimeoutId) {
+                          clearTimeout(confirmationTimeoutId)
+                          setConfirmationTimeoutId(null)
+                        }
+                        setShowConfirmationDialog(false)
+                        setMpesaStatus('failed')
+                        setGoldenError('❌ Payment Failed. Please try again.')
+                      } catch (err) {
+                        console.error('Error:', err)
+                      }
+                    }}
+                    className="flex-1 h-12 bg-white border border-red-200 text-red-500 font-bold rounded-2xl hover:bg-red-50 transition-all duration-300"
+                  >
+                    Fail
+                  </button>
+                  <button
+                    type="button"
+                    onClick={async () => {
+                      try {
+                        if (!checkoutRequestId) {
+                          alert('❌ No active transaction found.')
+                          return
+                        }
+                        const res = await fetch('/api/queue/mpesa-callback', {
+                          method: 'POST',
+                          headers: { 'Content-Type': 'application/json' },
+                          body: JSON.stringify({
+                            Body: {
+                              stkCallback: {
+                                MerchantRequestID: 'TEST_' + Date.now(),
+                                CheckoutRequestID: checkoutRequestId,
+                                ResultCode: 0,
+                                ResultDesc: 'The service request has been processed successfully.',
+                                CallbackMetadata: {
+                                  Item: [
+                                    { Name: 'Amount', Value: 200 },
+                                    { Name: 'MpesaReceiptNumber', Value: 'SIM' + Date.now() },
+                                    { Name: 'TransactionDate', Value: new Date().toISOString().replace(/[:-]/g, '').slice(0, 14) },
+                                    { Name: 'PhoneNumber', Value: goldenPhone },
+                                    { Name: 'AccountReference', Value: goldenTicketRef }
+                                  ]
+                                }
+                              }
+                            }
+                          })
+                        })
+                        if (!res.ok) {
+                          alert('❌ Failed to process payment callback')
+                          return
+                        }
+                        if (confirmationTimeoutId) {
+                          clearTimeout(confirmationTimeoutId)
+                          setConfirmationTimeoutId(null)
+                        }
+                        setShowConfirmationDialog(false)
+                        setMpesaStatus('success')
+                        setGoldenSuccess(true)
+                        const studentId = studentIdHeader || sessionStorage.getItem('studentId') || ''
+                        if (studentId) {
+                          const historyKey = `ticketHistory_${studentId}`
+                          const existing = localStorage.getItem(historyKey)
+                          const history = existing ? JSON.parse(existing) : []
+                          const updatedHistory = history.map((t: StoredTicket) =>
+                            t.id === selectedTicketForGolden
+                              ? {
+                                  ...t,
+                                  isGolden: true,
+                                  goldenTicketRef: goldenTicketRef,
+                                  mpesaStatus: 'success',
+                                  mpesaPaidAt: new Date().toISOString()
+                                }
+                              : t
+                          )
+                          localStorage.setItem(historyKey, JSON.stringify(updatedHistory))
+                          setTicketHistory(dedupeStoredTickets(updatedHistory))
+                        }
+                        setTimeout(() => {
+                          setShowGoldenModal(false)
+                          queryClient.invalidateQueries({ queryKey: ['service-stats'] })
+                          queryClient.invalidateQueries({ queryKey: ['ticket-history', studentIdHeader] })
+                        }, 2000)
+                      } catch (err) {
+                        console.error('Error:', err)
+                      }
+                    }}
+                    className="flex-1 h-12 bg-gradient-to-r from-green-600 to-green-500 text-white font-bold rounded-2xl hover:shadow-lg transition-all duration-300"
+                  >
+                    Successful
+                  </button>
+                </div>
+              </div>
             </div>
           </div>
         </div>
