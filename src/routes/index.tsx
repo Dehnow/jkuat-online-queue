@@ -1188,7 +1188,6 @@ function StudentDashboard() {
                     className="p-3 rounded-2xl border"
                     style={{backgroundColor: '#F9FAFB', borderColor: '#F3F4F6'}}
                   >
-                    <p className="text-xs font-bold text-gray-700 uppercase tracking-wide mb-2">Timeout: 12.50 seconds. If prompt doesn't appear:</p>
                     <div className="space-y-1.5">
                       {[
                         'Verify your phone number is correct.',
