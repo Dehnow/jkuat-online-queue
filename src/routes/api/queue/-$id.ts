@@ -59,6 +59,8 @@ export async function GET(request: Request, { params }: { params: { id: string }
       // Golden ticket eligibility - only most recent ticket can be upgraded
       canUpgradeToGolden: entry.canUpgradeToGolden,
       goldenTicketEligible: entry.canUpgradeToGolden && !entry.isGolden,
+      // Service call notification
+      calledNextAt: entry.calledNextAt,
     })
   } catch (error) {
     console.error('Queue GET/:id error:', error)
