@@ -722,59 +722,31 @@ function StudentDashboard() {
                 Golden Ticket
               </h3>
 
-              {/* What is Golden Ticket */}
-              <div className="mb-4 pb-4 border-b border-yellow-200">
-                <p className="text-sm font-semibold text-yellow-900 mb-2">✨ What is it?</p>
-                <p className="text-sm text-yellow-800">A premium ticket upgrade that prioritizes your position in the queue. Pay KES 200 via M-Pesa, and your ticket moves to the front of the queue for priority service.</p>
+              {/* Quick Overview */}
+              <div className="mb-3 pb-3 border-b border-yellow-200">
+                <p className="text-sm text-yellow-800"><strong>Pay KES 200 via M-Pesa</strong> → Your ticket moves to front of queue → Get served first</p>
               </div>
 
               {/* How It Works */}
-              <div className="mb-4 pb-4 border-b border-yellow-200">
-                <p className="text-sm font-semibold text-yellow-900 mb-2">🔄 How It Works</p>
-                <div className="space-y-2 text-sm text-yellow-800">
-                  <p><strong>Step 1:</strong> Create a regular ticket first</p>
-                  <p><strong>Step 2:</strong> Click "⭐ Upgrade to Golden Ticket" button on your latest ticket</p>
-                  <p><strong>Step 3:</strong> A payment dialog opens - enter your M-Pesa phone number</p>
-                  <p><strong>Step 4:</strong> System sends M-Pesa prompt to your phone</p>
-                  <p><strong>Step 5:</strong> Complete payment by entering your M-Pesa PIN</p>
-                  <p><strong>Step 6:</strong> Your ticket instantly gets priority status and moves to front</p>
+              <div className="mb-3 pb-3 border-b border-yellow-200">
+                <p className="text-xs font-semibold text-yellow-900 mb-2">📱 Process</p>
+                <div className="space-y-1 text-xs text-yellow-800">
+                  <p>1. Click "⭐ Upgrade to Golden Ticket" on your ticket</p>
+                  <p>2. Enter M-Pesa number → Complete payment</p>
+                  <p>3. Receive M-Pesa confirmation message</p>
                 </div>
-              </div>
-
-              {/* Benefits */}
-              <div className="mb-4 pb-4 border-b border-yellow-200">
-                <p className="text-sm font-semibold text-yellow-900 mb-2">🎯 What You Get</p>
-                <ul className="space-y-1.5 text-sm text-yellow-800">
-                  <li className="flex items-center gap-2"><span className="text-green-600">✓</span> Your position in queue immediately improves to first</li>
-                  <li className="flex items-center gap-2"><span className="text-green-600">✓</span> Staff serves golden tickets before regular ones</li>
-                  <li className="flex items-center gap-2"><span className="text-green-600">✓</span> Unique golden ticket reference number</li>
-                  <li className="flex items-center gap-2"><span className="text-green-600">✓</span> Visible ✨ indicator on your ticket</li>
-                </ul>
               </div>
 
               {/* Claim Gold Button */}
-              <div className="mb-4 pb-4 border-b border-yellow-200">
-                <p className="text-sm font-semibold text-yellow-900 mb-2">🏆 Claim Gold Button</p>
-                <p className="text-sm text-yellow-800 mb-2">Once your golden ticket payment is confirmed, a <strong>"Claim Gold"</strong> button appears in your ticket history.</p>
-                <div className="bg-white/50 rounded-lg p-3 space-y-1 text-sm text-yellow-800">
-                  <p><strong>What it does:</strong></p>
-                  <p>• Finalizes your golden ticket upgrade</p>
-                  <p>• Moves your ticket to the priority queue</p>
-                  <p>• Gives you a new priority queue number (e.g., #5✨)</p>
-                  <p>• Notifies staff about your priority status</p>
-                  <p className="pt-2 text-xs"><em>Click it once payment is confirmed to activate priority service</em></p>
-                </div>
+              <div className="mb-3 pb-3 border-b border-yellow-200">
+                <p className="text-xs font-semibold text-yellow-900 mb-1">🏆 Claim Gold Button</p>
+                <p className="text-xs text-yellow-800">After payment confirmed, click this button to finalize upgrade, get priority queue number (#X✨), and notify staff</p>
               </div>
 
-              {/* Payment Info */}
+              {/* Cost & Details */}
               <div>
-                <p className="text-sm font-semibold text-yellow-900 mb-2">💳 Payment Details</p>
-                <div className="space-y-1 text-sm text-yellow-800 bg-white/50 rounded-lg p-3">
-                  <p><strong>Cost:</strong> KES 200</p>
-                  <p><strong>Payment Method:</strong> M-Pesa</p>
-                  <p><strong>Processing Time:</strong> Instant (within 12.5 seconds)</p>
-                  <p><strong>Confirmation:</strong> M-Pesa message to your phone</p>
-                </div>
+                <p className="text-xs font-semibold text-yellow-900 mb-1">💳 Details</p>
+                <p className="text-xs text-yellow-800"><strong>Cost:</strong> KES 200 | <strong>Method:</strong> M-Pesa | <strong>Time:</strong> Instant</p>
               </div>
             </div>
 
