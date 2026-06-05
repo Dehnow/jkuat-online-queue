@@ -5,6 +5,168 @@ A digital queue management system for JKUAT (university) students and staff to s
 
 ---
 
+## Key Backend Code Snippets
+
+### Queue Entry Creation (Create New Ticket)
+```javascript
+// POST /api/queue - Create queue entry
+const entry = await db.insert(queueEntries).values({
+  name: body.name,
+  studentId: body.studentId,
+  serviceType: body.serviceType,
+  queueNumber: maxQueueNum + 1,
+  status: 'waiting',
+  canUpgradeToGolden: true
+}).returning()
+
+return json({ 
+  id: entry[0].id, 
+  queueNumber: entry[0].queueNumber,
+  referenceNumber: `${serviceCode}${entry[0].id}`
+})
+```
+
+### Claim Gold - Position Calculation
+```javascript
+// Limit golden tickets ahead: Max 3 golden tickets at priority
+const successfulGoldWaiting = waitingWithoutGolden.filter(
+  (ticket) => ticket.isGolden && ticket.mpesaStatus === 'success'
+)
+
+let targetPosition = 0
+if (successfulGoldWaiting.length === 0) {
+  targetPosition = 0  // Go to front
+} else if (successfulGoldWaiting.length <= 3) {
+  const lastGold = successfulGoldWaiting[successfulGoldWaiting.length - 1]
+  targetPosition = waitingWithoutGolden.findIndex((ticket) => ticket.queueNumber > lastGold.queueNumber)
+} else {
+  const thirdGold = successfulGoldWaiting[2]
+  targetPosition = waitingWithoutGolden.findIndex((ticket) => ticket.queueNumber > thirdGold.queueNumber)
+}
+
+// Shift queue numbers
+await db.update(queueEntries)
+  .set({ queueNumber: sql`${queueEntries.queueNumber} + 1` })
+  .where(and(
+    eq(queueEntries.serviceType, serviceType),
+    eq(queueEntries.status, 'waiting'),
+    not(eq(queueEntries.id, queueId)),
+    sql`${queueEntries.queueNumber} >= ${insertionQueueNumber}`
+  ))
+```
+
+### Call Next - Golden Priority
+```javascript
+// Priority: Golden tickets first
+let nextEntry = await db.query.queueEntries.findFirst({
+  where: and(
+    eq(queueEntries.officeId, officeId),
+    eq(queueEntries.status, 'waiting'),
+    eq(queueEntries.isGolden, true),
+    eq(queueEntries.mpesaStatus, 'success')
+  ),
+  orderBy: (table, { asc }) => [asc(table.queueNumber)]
+})
+
+// If no golden, get regular
+if (!nextEntry) {
+  nextEntry = await db.query.queueEntries.findFirst({
+    where: and(
+      eq(queueEntries.officeId, officeId),
+      eq(queueEntries.status, 'waiting')
+    ),
+    orderBy: (table, { asc }) => [asc(table.queueNumber)]
+  })
+}
+```
+
+### M-Pesa STK Push - Initiate Payment
+```javascript
+// POST /api/queue/$id/mpesa-pay - Send STK prompt
+const stkPayload = {
+  BusinessShortCode: MPESA_CONFIG.tillNumber,
+  Password: base64Password,
+  Timestamp: timestamp,
+  TransactionType: 'CustomerPayBillOnline',
+  Amount: 50,
+  PartyA: phoneNumber,
+  PartyB: MPESA_CONFIG.tillNumber,
+  PhoneNumber: phoneNumber,
+  CallBackURL: MPESA_CONFIG.callbackUrl,
+  AccountReference: `GT${queueId}`,
+  TransactionDesc: `Golden Ticket ${queueId}`
+}
+
+const response = await fetch('https://sandbox.safaricom.co.ke/mpesa/stkpush/v1/processrequest', {
+  method: 'POST',
+  headers: { Authorization: `Bearer ${accessToken}` },
+  body: JSON.stringify(stkPayload)
+})
+```
+
+### M-Pesa Callback Handler
+```javascript
+// POST /api/queue/mpesa-callback - Receive payment confirmation
+const { Body } = await request.json()
+const resultCode = Body.stkCallback.ResultCode
+
+if (resultCode === 0) {
+  // Payment success
+  const callbackMetadata = Body.stkCallback.CallbackMetadata.Item
+  const mpesaReceiptNumber = callbackMetadata.find(x => x.Name === 'MpesaReceiptNumber').Value
+  
+  await db.update(queueEntries).set({
+    mpesaStatus: 'success',
+    mpesaTransactionId: mpesaReceiptNumber,
+    mpesaPaidAt: new Date()
+  }).where(eq(queueEntries.id, queueId))
+} else {
+  // Payment failed
+  await db.update(queueEntries).set({
+    mpesaStatus: 'failed'
+  }).where(eq(queueEntries.id, queueId))
+}
+```
+
+### Mark as Served - Update Status
+```javascript
+// POST /api/staff/queue-action - End service
+await db.update(queueEntries).set({
+  status: 'served',
+  servedAt: new Date()
+}).where(eq(queueEntries.id, queueId))
+
+return json({
+  action: 'end_service',
+  entry: { id, status: 'served' },
+  message: 'Customer service completed'
+})
+```
+
+### Get Queue Status - Real-time Polling
+```javascript
+// GET /api/getQueueStatus - Check office and queue status
+const offices = await db.query.offices.findMany({
+  where: eq(offices.status, 'open')
+})
+
+const queueStats = await Promise.all(
+  offices.map(async (office) => ({
+    officeId: office.id,
+    officeName: office.name,
+    waitingCount: await db.query.queueEntries.findMany({
+      where: and(
+        eq(queueEntries.officeId, office.id),
+        eq(queueEntries.status, 'waiting')
+      )
+    }),
+    averageWaitTime: calculateWaitTime(...)
+  }))
+)
+```
+
+---
+
 ## Architecture Overview
 
 ### Tech Stack
