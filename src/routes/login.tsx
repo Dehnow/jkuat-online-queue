@@ -285,8 +285,8 @@ export default function LoginPage() {
       <div className="absolute bottom-0 right-0 w-96 h-96 bg-green-100 rounded-full mix-blend-multiply filter blur-3xl opacity-30"></div>
 
       {/* LEFT PANEL – campus image */}
-      <div className="hidden lg:block lg:w-[34%] relative bg-cover bg-center" style={{ backgroundImage: "url('/Jomo_Kenyatta_University_Juja_Campus_Main_Library.JPG')" }}>
-        <div className="absolute inset-0 bg-gradient-to-t from-black/65 via-black/45 to-black/30"></div>
+      <div className="hidden lg:block lg:w-[34%] relative bg-cover bg-center" style={{ backgroundImage: "url('/Jomo_Kenyatta_University_Juja_Campus_Main_Library.JPG')", imageRendering: 'high-quality' }}>
+        <div className="absolute inset-0 bg-gradient-to-t from-black/40 via-black/18 to-black/5"></div>
         <div className="relative z-10 flex flex-col justify-between h-full px-6 py-8">
           <div className="flex items-center gap-3">
             <img src="/queue-bg.jpeg" alt="JKUAT Logo" className="w-[78px] h-[78px] rounded-full border-2 border-white/30 shadow-md" />
