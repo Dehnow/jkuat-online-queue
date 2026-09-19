@@ -55,6 +55,23 @@ if (!connectionString) {
 
 let dbInstance: any = null;
 
+function getPostgresOptions(connectionString: string) {
+  const isRemoteDatabase = /render\.com|railway\.app|neon\.tech|supabase\.co|amazonaws|postgres|db\./i.test(connectionString);
+  const isLocalDatabase = /(localhost|127\.0\.0\.1|postgresql:\/\/.*:5432)/i.test(connectionString);
+
+  return {
+    max: 10,
+    idle_timeout: 30,
+    connect_timeout: 10,
+    ...(isRemoteDatabase && !isLocalDatabase ? { ssl: { rejectUnauthorized: false } } : {}),
+    onnotice: (notice: any) => {
+      if (NODE_ENV === 'development') {
+        console.log('📢 Database Notice:', notice.message);
+      }
+    },
+  };
+}
+
 /**
  * Initialize database connection with error handling
  */
@@ -67,16 +84,7 @@ async function initializeDatabase() {
     }
 
     // Create postgres client with connection pooling
-    const client = postgres(connectionString, {
-      max: 10, // Connection pool size
-      idle_timeout: 30,
-      connect_timeout: 10,
-      onnotice: (notice: any) => {
-        if (NODE_ENV === 'development') {
-          console.log('📢 Database Notice:', notice.message);
-        }
-      },
-    });
+    const client = postgres(connectionString, getPostgresOptions(connectionString));
 
     // Test connection
     console.log('🔍 Testing database connection...');

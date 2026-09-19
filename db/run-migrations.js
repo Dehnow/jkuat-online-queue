@@ -23,7 +23,11 @@ async function runMigrations() {
   }
 
   console.log('✓ DATABASE_URL found in environment')
-  const client = postgres(DATABASE_URL)
+  const isRemoteDatabase = /render\.com|railway\.app|neon\.tech|supabase\.co|amazonaws|postgres|db\./i.test(DATABASE_URL)
+  const isLocalDatabase = /(localhost|127\.0\.0\.1|postgresql:\/\/.*:5432)/i.test(DATABASE_URL)
+  const client = postgres(DATABASE_URL, {
+    ssl: isRemoteDatabase && !isLocalDatabase ? { rejectUnauthorized: false } : undefined,
+  })
 
   try {
     console.log('\n🔄 Running database migrations...')

@@ -157,6 +157,19 @@ let db = null
 let connectionAttempts = 0
 const maxRetries = 5
 
+function getPostgresOptions(connectionString) {
+  const isRemoteDatabase = /render\.com|railway\.app|neon\.tech|supabase\.co|amazonaws|postgres|db\./i.test(connectionString)
+  const isLocalDatabase = /(localhost|127\.0\.0\.1|postgresql:\/\/.*:5432)/i.test(connectionString)
+
+  const sslEnabled = isRemoteDatabase && !isLocalDatabase
+  return {
+    max: 10,
+    idle_timeout: 30,
+    connect_timeout: 10,
+    ...(sslEnabled ? { ssl: { rejectUnauthorized: false } } : {}),
+  }
+}
+
 async function initializeDatabase() {
   const connectionString = process.env.DATABASE_URL
   if (!connectionString) {
@@ -164,11 +177,7 @@ async function initializeDatabase() {
   }
 
   try {
-    const client = postgres(connectionString, {
-      max: 10, // Connection pool size
-      idle_timeout: 30,
-      connect_timeout: 10,
-    })
+    const client = postgres(connectionString, getPostgresOptions(connectionString))
 
     // Test connection
     await client`SELECT 1`
