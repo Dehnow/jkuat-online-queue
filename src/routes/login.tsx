@@ -285,30 +285,14 @@ export default function LoginPage() {
       <div className="absolute bottom-0 right-0 w-96 h-96 bg-green-100 rounded-full mix-blend-multiply filter blur-3xl opacity-30"></div>
 
       {/* LEFT PANEL – campus image */}
-      <div className="hidden lg:block lg:w-[34%] relative bg-cover bg-center" style={{ backgroundImage: "url('/Jomo_Kenyatta_University_Juja_Campus_Main_Library.JPG')", imageRendering: 'high-quality' }}>
+      <div className="hidden lg:block lg:w-[34%] relative overflow-hidden bg-[#17251d]">
+        <img src="/jkuat-lib-photo.jpg" alt="JKUAT library campus" className="absolute inset-0 h-full w-full object-contain object-center" />
         <div className="absolute inset-0 bg-gradient-to-t from-black/40 via-black/18 to-black/5"></div>
         <div className="relative z-10 flex flex-col justify-between h-full px-6 py-8">
           <div className="flex items-center gap-3">
             <img src="/queue-bg.jpeg" alt="JKUAT Logo" className="w-[78px] h-[78px] rounded-full border-2 border-white/30 shadow-md" />
             <div>
               <div className="text-white text-[18px] font-medium tracking-wide uppercase leading-tight">JOMO KENYATTA UNIVERSITY<br />OF AGRICULTURE AND TECHNOLOGY</div>
-            </div>
-          </div>
-          <div className="flex flex-col justify-center -mt-16 space-y-5">
-            <h1 className="text-7xl font-extrabold leading-tight">
-              <span className="text-green-400">JKUAT</span>
-              <span className="text-white"> Online QUEUE</span>
-            </h1>
-            <p className="text-white text-2xl font-normal">Smart. Simple. Seamless.</p>
-            <p className="text-white/90 text-xl leading-relaxed max-w-[500px]">
-              Streamlining campus service delivery with digital queue management.
-              No more long lines – join remotely and get served efficiently.
-            </p>
-            <div className="space-y-6 pt-4">
-              <div className="flex items-start gap-4"><div className="w-[48px] h-[48px] bg-green-600 rounded-full shadow-md flex items-center justify-center"><svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" /></svg></div><div><p className="text-white text-xl font-bold">Real-time Queue Updates</p><p className="text-gray-200 text-base">See your position and wait time live</p></div></div>
-              <div className="flex items-start gap-4"><div className="w-[48px] h-[48px] bg-green-600 rounded-full shadow-md flex items-center justify-center"><svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M3 5a2 2 0 012-2h3.28a1 1 0 01.948.684l1.498 4.493a1 1 0 01-.502 1.21l-2.257 1.13a11.042 11.042 0 005.516 5.516l1.13-2.257a1 1 0 011.21-.502l4.493 1.498a1 1 0 01.684.949V19a2 2 0 01-2 2h-1C9.716 21 3 14.284 3 6V5z" /></svg></div><div><p className="text-white text-xl font-bold">Join Anytime, Anywhere</p><p className="text-gray-200 text-base">Use any device to join the queue</p></div></div>
-              <div className="flex items-start gap-4"><div className="w-[48px] h-[48px] bg-green-600 rounded-full shadow-md flex items-center justify-center"><svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9" /></svg></div><div><p className="text-white text-xl font-bold">Smart Notifications</p><p className="text-gray-200 text-base">Get notified when it’s your turn</p></div></div>
-              <div className="flex items-start gap-4"><div className="w-[48px] h-[48px] bg-green-600 rounded-full shadow-md flex items-center justify-center"><svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" /></svg></div><div><p className="text-white text-xl font-bold">Efficient & Transparent</p><p className="text-gray-200 text-base">Better service, less waiting</p></div></div>
             </div>
           </div>
           <div className="backdrop-blur-md bg-white/90 rounded-2xl shadow-xl border border-white/30 w-full max-w-[740px] h-auto py-5 px-6 flex items-center justify-between">
@@ -446,11 +430,14 @@ export default function LoginPage() {
             <p className="text-center text-gray-500 text-sm mt-3">Check your position in the queue without logging in.</p>
           </div>
           <div className="mt-8 flex justify-center">
-            <div className="bg-white/80 backdrop-blur-md rounded-2xl shadow-lg border border-green-100/50 px-6 py-3 flex gap-8 w-full justify-around">
-              <div className="text-center"><div className="text-2xl font-bold text-green-600">5K+</div><div className="text-xs text-gray-500">Students Served</div></div>
-              <div className="text-center"><div className="text-2xl font-bold text-green-600">95%</div><div className="text-xs text-gray-500">Satisfaction</div></div>
-              <div className="text-center"><div className="text-2xl font-bold text-green-600">24/7</div><div className="text-xs text-gray-500">Access</div></div>
-              <div className="text-center"><div className="text-2xl font-bold text-green-600">Secure</div><div className="text-xs text-gray-500">Your Data</div></div>
+            <div className="bg-white/80 backdrop-blur-md rounded-2xl shadow-lg border border-green-100/50 px-6 py-3 flex items-center justify-center gap-3 w-full">
+              <div className="flex h-10 w-14 shrink-0 items-center justify-center overflow-hidden rounded-lg bg-[#1b0b12] shadow-md" aria-hidden="true">
+                <img src="/evernight-goddess-emblem.webp" alt="" className="h-full w-full object-contain" />
+              </div>
+              <div className="text-center">
+                <div className="text-lg font-bold text-green-700">Protected by Evernight</div>
+                <div className="text-xs text-gray-500">Secure digital queue access</div>
+              </div>
             </div>
           </div>
         </div>
