@@ -26,9 +26,10 @@ import * as schema from "./schema.js";
 // Load environment variables - prioritize .env.local for development
 const NODE_ENV_INITIAL = process.env.NODE_ENV || 'development'
 if (NODE_ENV_INITIAL === 'development') {
+  dotenv.config({ path: '.env' })
   dotenv.config({ path: '.env.local' })
 } else {
-  dotenv.config()
+  dotenv.config({ path: '.env' })
 }
 
 // Configuration
